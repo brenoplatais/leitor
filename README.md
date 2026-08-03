@@ -6,10 +6,10 @@ sem nuvem.
 
 ## 🔗 Acesso
 
-**App online:** https://SEU_USUARIO.github.io/leitor/
+**App online:** https://brenoplatais.github.io/leitor/
 
-> Troque `SEU_USUARIO` pelo seu usuário do GitHub (e o nome do repositório, se
-> for diferente de `leitor`).
+> Fica disponível após o primeiro deploy do GitHub Actions concluir (aba
+> **Actions** do repositório).
 
 Para a **transcrição por voz (STT)** use **Chrome ou Edge** — a leitura em voz
 alta (TTS) funciona na maioria dos navegadores. Cada pessoa tem seus próprios
@@ -22,7 +22,7 @@ O deploy é automático via GitHub Actions ([`.github/workflows/deploy.yml`](.gi
 
 1. Crie um repositório no GitHub (público) e envie este projeto:
    ```bash
-   git remote add origin https://github.com/SEU_USUARIO/leitor.git
+   git remote add origin https://github.com/brenoplatais/leitor.git
    git push -u origin main
    ```
 2. No repositório: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
