@@ -4,11 +4,38 @@ Leia PDFs em voz alta, pause para gravar anotações faladas (transcritas em tem
 real) e compile tudo ancorado ao texto original — direto no navegador, offline,
 sem nuvem.
 
+## 🔗 Acesso
+
+**App online:** https://SEU_USUARIO.github.io/leitor/
+
+> Troque `SEU_USUARIO` pelo seu usuário do GitHub (e o nome do repositório, se
+> for diferente de `leitor`).
+
+Para a **transcrição por voz (STT)** use **Chrome ou Edge** — a leitura em voz
+alta (TTS) funciona na maioria dos navegadores. Cada pessoa tem seus próprios
+PDFs e anotações no navegador (armazenamento local); para compartilhar
+anotações, use **Exportar JSON/Markdown**.
+
+## Publicar (GitHub Pages)
+
+O deploy é automático via GitHub Actions ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)):
+
+1. Crie um repositório no GitHub (público) e envie este projeto:
+   ```bash
+   git remote add origin https://github.com/SEU_USUARIO/leitor.git
+   git push -u origin main
+   ```
+2. No repositório: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. Cada push para `main` builda e publica sozinho. A URL aparece em **Actions → deploy**.
+
 ## Recursos
 
 - **Leitura em voz alta (TTS)** — Web Speech API lê parágrafo a parágrafo, com o
-  parágrafo atual destacado. Controles de play/pause, velocidade (0.8×–1.5×),
-  volume e navegação por parágrafo. `Espaço` alterna play/pause.
+  parágrafo atual destacado e a **palavra sendo lida em evidência** (rolagem
+  automática/teleprompter). Controles de play/pause, velocidade (0.5×–2.5× com
+  leitura em palavras por minuto), contagem regressiva até o fim, volume,
+  seleção de voz, tamanho de fonte e navegação por parágrafo. `Espaço` alterna
+  play/pause.
 - **Anotações por voz (STT)** — "Pausar e anotar" pausa a leitura e abre a
   gravação; a fala é transcrita ao vivo e pode ser editada antes de salvar.
 - **Ancoragem** — cada anotação vira um marcador inline `[A#]` no parágrafo e
