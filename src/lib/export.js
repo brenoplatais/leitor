@@ -1,4 +1,5 @@
 // Export a document + its annotations to structured JSON or compiled Markdown.
+import { typeOf } from './annotationTypes'
 
 function triggerDownload(content, filename, mime) {
   const blob = new Blob([content], { type: mime })
@@ -41,7 +42,10 @@ export function exportJSON({ pdfName, paragraphs, annotations }) {
     annotations: annotations.map((a) => ({
       id: a.id,
       label: a.label,
+      type: a.type || 'note',
       paragraphIndex: a.paragraphIndex,
+      charOffset: a.charOffset ?? null,
+      contextSnippet: a.contextSnippet || '',
       page: paragraphs[a.paragraphIndex]?.page ?? null,
       transcription: a.transcription,
       createdAt: new Date(a.createdAt).toISOString(),
@@ -75,7 +79,7 @@ export function exportMarkdown({ pdfName, paragraphs, annotations }) {
     lines.push('')
     if (anns) {
       for (const a of anns) {
-        lines.push(`> **[${a.label}]** ${a.transcription}`)
+        lines.push(`> **[${a.label}]** _(${typeOf(a.type).label})_ ${a.transcription}`)
         lines.push('')
       }
     }
@@ -92,13 +96,18 @@ export function exportMarkdown({ pdfName, paragraphs, annotations }) {
     annotations.forEach((a) => {
       const page = paragraphs[a.paragraphIndex]?.page
       const when = new Date(a.createdAt).toLocaleString()
-      lines.push(`### [${a.label}] — pág. ${page ?? '?'} · ${when}`)
+      const typeLabel = typeOf(a.type).label
+      lines.push(`### [${a.label}] ${typeLabel} — pág. ${page ?? '?'} · ${when}`)
       lines.push('')
       lines.push(a.transcription)
       lines.push('')
-      const context = paragraphs[a.paragraphIndex]?.text
-      if (context) {
-        const snippet = context.length > 220 ? context.slice(0, 220) + '…' : context
+      const snippet =
+        a.contextSnippet ||
+        (() => {
+          const c = paragraphs[a.paragraphIndex]?.text || ''
+          return c.length > 220 ? c.slice(0, 220) + '…' : c
+        })()
+      if (snippet) {
         lines.push(`> Trecho ancorado: ${snippet}`)
         lines.push('')
       }

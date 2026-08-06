@@ -1,18 +1,20 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
+import { ANNOTATION_TYPES, DEFAULT_TYPE } from '../lib/annotationTypes'
 import { Mic, Stop, Close, Check } from './Icons'
 
 /**
  * Recording modal. Opens with the reader already paused. Captures voice via STT
- * in real time, shows the live transcript (editable), and saves it anchored to
- * the current paragraph. Also used to edit an existing annotation.
+ * in real time, shows the live transcript (editable), lets the user tag the
+ * annotation's type, and saves it anchored to a precise point in the text.
+ * Also used to edit an existing annotation.
  */
 export default function AnnotationModal({
   open,
   editing,
   paragraphIndex,
-  paragraphText,
   page,
+  contextSnippet,
   lang,
   onSave,
   onClose,
@@ -20,14 +22,17 @@ export default function AnnotationModal({
   const { supported, listening, interim, finalText, setFinal, error, start, stop, reset } =
     useSpeechRecognition({ lang })
   const textareaRef = useRef(null)
+  const [type, setType] = useState(DEFAULT_TYPE)
 
   // Prime the transcript when the modal opens; auto-listen for new annotations.
   useEffect(() => {
     if (!open) return
     if (editing) {
       setFinal(editing.transcription)
+      setType(editing.type || DEFAULT_TYPE)
     } else {
       reset()
+      setType(DEFAULT_TYPE)
       if (supported) start()
     }
     return () => stop()
@@ -42,7 +47,7 @@ export default function AnnotationModal({
     stop()
     const text = preview.trim()
     if (!text) return
-    onSave(text)
+    onSave(text, type)
   }
 
   function handleClose() {
@@ -65,7 +70,7 @@ export default function AnnotationModal({
               {editing ? `Editar anotação ${editing.label}` : 'Nova anotação'}
             </h3>
             <p className="text-xs text-slate-400">
-              Ancorada ao parágrafo {paragraphIndex + 1} · pág. {page}
+              Ancorada no ponto exato · parágrafo {paragraphIndex + 1} · pág. {page}
             </p>
           </div>
           <button onClick={handleClose} className="rounded p-1 text-slate-400 hover:bg-slate-100">
@@ -73,13 +78,40 @@ export default function AnnotationModal({
           </button>
         </div>
 
-        {paragraphText && (
+        {contextSnippet && (
           <div className="mx-5 mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs italic text-slate-500">
-            “{paragraphText.length > 180 ? paragraphText.slice(0, 180) + '…' : paragraphText}”
+            <span className="mr-1 not-italic font-medium text-slate-400">no ponto:</span>
+            “{contextSnippet}”
           </div>
         )}
 
-        <div className="px-5 py-4">
+        <div className="px-5 pt-4">
+          {/* Type selector */}
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {ANNOTATION_TYPES.map((t) => {
+              const active = t.id === type
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setType(t.id)}
+                  className={
+                    'rounded-full border px-3 py-1 text-xs font-medium transition ' +
+                    (active ? 'text-white' : 'text-slate-500 hover:bg-slate-50')
+                  }
+                  style={
+                    active
+                      ? { backgroundColor: t.hex, borderColor: t.hex }
+                      : { borderColor: '#e2e8f0' }
+                  }
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="px-5 pb-4">
           <div className="mb-3 flex items-center gap-3">
             {listening ? (
               <button

@@ -17,6 +17,7 @@ import {
   getDocument,
 } from './lib/db'
 import { exportJSON, exportMarkdown } from './lib/export'
+import { contextAround, DEFAULT_TYPE } from './lib/annotationTypes'
 
 const LANGUAGES = [
   { code: '', label: 'Idioma do navegador' },
@@ -41,6 +42,17 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false)
 
   const fileInputRef = useRef(null)
+  // Current doc id in a ref so the reader's index callback can persist reading
+  // progress without clobbering it during a document switch.
+  const docIdRef = useRef(null)
+  useEffect(() => {
+    docIdRef.current = doc?.id ?? null
+  }, [doc?.id])
+
+  const handleIndexChange = useCallback((i) => {
+    setCurrentIndex(i)
+    if (docIdRef.current) patchDocument(docIdRef.current, { progressIndex: i })
+  }, [])
 
   const paragraphs = doc?.paragraphs ?? []
   const effectiveLang = lang || (typeof navigator !== 'undefined' ? navigator.language : 'pt-BR')
@@ -60,7 +72,7 @@ export default function App() {
     volume,
     lang: effectiveLang,
     voice: selectedVoice,
-    onIndexChange: setCurrentIndex,
+    onIndexChange: handleIndexChange,
     onWord: setWordRange,
   })
 
@@ -138,6 +150,7 @@ export default function App() {
         bytes,
       })
       setAnnotations(existing.annotations ?? [])
+      setCurrentIndex(existing.progressIndex ?? 0) // resume where we stopped
       // refresh the stored blob so the record stays openable
       patchDocument(id, { blob: file })
       return
@@ -190,6 +203,7 @@ export default function App() {
       bytes,
     })
     setAnnotations(record.annotations ?? [])
+    setCurrentIndex(record.progressIndex ?? 0) // resume where we stopped
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -200,21 +214,37 @@ export default function App() {
   }
 
   // ---- Annotation actions ------------------------------------------------
+  // Anchor point: the exact character offset of the word being read (falls back
+  // to the paragraph start when not mid-word).
   function openAnnotate() {
     if (reader.reading && !reader.paused) reader.pause()
-    setAnnotationModal({ paragraphIndex: currentIndex, editing: null })
+    const pText = paragraphs[currentIndex]?.text || ''
+    const charOffset = wordRange && wordRange.index === currentIndex ? wordRange.start : 0
+    setAnnotationModal({
+      paragraphIndex: currentIndex,
+      charOffset,
+      contextSnippet: contextAround(pText, charOffset),
+      editing: null,
+    })
   }
 
   function editAnnotation(a) {
-    setAnnotationModal({ paragraphIndex: a.paragraphIndex, editing: a })
+    const pText = paragraphs[a.paragraphIndex]?.text || ''
+    const charOffset = a.charOffset ?? 0
+    setAnnotationModal({
+      paragraphIndex: a.paragraphIndex,
+      charOffset,
+      contextSnippet: a.contextSnippet || contextAround(pText, charOffset),
+      editing: a,
+    })
   }
 
-  function saveAnnotation(text) {
+  function saveAnnotation(text, type) {
     setAnnotations((prev) => {
       let next
       if (annotationModal.editing) {
         next = prev.map((a) =>
-          a.id === annotationModal.editing.id ? { ...a, transcription: text } : a,
+          a.id === annotationModal.editing.id ? { ...a, transcription: text, type } : a,
         )
       } else {
         const n = prev.reduce((m, a) => Math.max(m, a.n ?? 0), 0) + 1
@@ -223,10 +253,18 @@ export default function App() {
           n,
           label: `A${n}`,
           paragraphIndex: annotationModal.paragraphIndex,
+          charOffset: annotationModal.charOffset ?? 0,
+          contextSnippet: annotationModal.contextSnippet || '',
+          type: type || DEFAULT_TYPE,
           transcription: text,
           createdAt: Date.now(),
         }
-        next = [...prev, ann].sort((a, b) => a.paragraphIndex - b.paragraphIndex || a.n - b.n)
+        next = [...prev, ann].sort(
+          (a, b) =>
+            a.paragraphIndex - b.paragraphIndex ||
+            (a.charOffset ?? 0) - (b.charOffset ?? 0) ||
+            a.n - b.n,
+        )
       }
       persistAnnotations(next)
       return next
@@ -458,8 +496,8 @@ export default function App() {
         open={!!annotationModal}
         editing={annotationModal?.editing}
         paragraphIndex={annotationModal?.paragraphIndex ?? 0}
-        paragraphText={paragraphs[annotationModal?.paragraphIndex ?? 0]?.text}
         page={paragraphs[annotationModal?.paragraphIndex ?? 0]?.page ?? 1}
+        contextSnippet={annotationModal?.contextSnippet}
         lang={effectiveLang}
         onSave={saveAnnotation}
         onClose={() => setAnnotationModal(null)}

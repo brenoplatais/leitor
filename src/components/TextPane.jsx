@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import AnnotationMarker from './AnnotationMarker'
 
 // Smoothly tween a container's scrollTop. We animate scrollTop ourselves rather
 // than rely on scrollIntoView({behavior:'smooth'}), which some embedded browsers
@@ -40,27 +41,65 @@ function scrollElementIntoView(container, el, block, animRef) {
 }
 
 /**
- * Render a paragraph's text, wrapping the word currently being spoken in a
- * larger, highlighted marker. `range` is null unless this paragraph is active;
- * `markRef` is attached to the marker so the pane can scroll it into view.
+ * Render a paragraph: plain text, with the word currently being spoken wrapped
+ * in a larger highlight (`range`, non-null only for the active paragraph) and
+ * annotation `markers` inserted at their exact character offsets.
+ *
+ * We split the text at every boundary (word range edges + each marker offset),
+ * then walk the slices — emitting the marker chips at their offset and wrapping
+ * the word-range slice in <mark>.
  */
-function renderText(text, range, markRef) {
-  if (!range) return text
-  const start = Math.max(0, Math.min(range.start, text.length))
-  const end = Math.max(start, Math.min(range.end, text.length))
-  if (end <= start) return text
-  return (
-    <>
-      {text.slice(0, start)}
-      <mark
-        ref={markRef}
-        className="mx-0.5 inline-block rounded bg-amber-300 px-1 align-baseline text-[1.22em] font-semibold leading-none text-slate-900 shadow-[0_1px_0_rgba(0,0,0,0.06)]"
-      >
-        {text.slice(start, end)}
-      </mark>
-      {text.slice(end)}
-    </>
-  )
+function renderParagraph(text, range, markers, markRef, onOpenAnnotation) {
+  const clamp = (n) => Math.max(0, Math.min(n ?? 0, text.length))
+
+  // Group markers by clamped offset, in label order.
+  const byOffset = new Map()
+  for (const ann of markers) {
+    const o = clamp(ann.charOffset)
+    if (!byOffset.has(o)) byOffset.set(o, [])
+    byOffset.get(o).push(ann)
+  }
+
+  const wStart = range ? clamp(range.start) : -1
+  const wEnd = range ? clamp(range.end) : -1
+  const hasWord = range && wEnd > wStart
+
+  const points = new Set([0, text.length])
+  byOffset.forEach((_, o) => points.add(o))
+  if (hasWord) {
+    points.add(wStart)
+    points.add(wEnd)
+  }
+  const sorted = [...points].sort((a, b) => a - b)
+
+  const out = []
+  let wordAttached = false
+  for (let i = 0; i < sorted.length; i++) {
+    const p = sorted[i]
+    if (byOffset.has(p)) {
+      for (const ann of byOffset.get(p)) {
+        out.push(<AnnotationMarker key={ann.id} ann={ann} onClick={onOpenAnnotation} />)
+      }
+    }
+    const next = sorted[i + 1]
+    if (next === undefined || next === p) continue
+    const slice = text.slice(p, next)
+    if (hasWord && p >= wStart && next <= wEnd) {
+      out.push(
+        <mark
+          key={'w' + p}
+          ref={wordAttached ? undefined : markRef}
+          className="mx-0.5 inline-block rounded bg-amber-300 px-1 align-baseline text-[1.22em] font-semibold leading-none text-slate-900 shadow-[0_1px_0_rgba(0,0,0,0.06)]"
+        >
+          {slice}
+        </mark>,
+      )
+      wordAttached = true
+    } else {
+      out.push(<span key={'t' + p}>{slice}</span>)
+    }
+  }
+  return out
 }
 
 /**
@@ -167,7 +206,10 @@ export default function TextPane({
           style={{ fontSize: `${fontPx}px` }}
         >
           {paragraphs.map((p, i) => {
-            const anns = byParagraph.get(i)
+            const anns = byParagraph.get(i) || []
+            // Precise markers have a charOffset; legacy ones render at the end.
+            const inline = anns.filter((a) => typeof a.charOffset === 'number')
+            const trailing = anns.filter((a) => typeof a.charOffset !== 'number')
             const active = i === currentIndex
             const range = active && wordRange && wordRange.index === i ? wordRange : null
             return (
@@ -188,19 +230,9 @@ export default function TextPane({
                 >
                   {i + 1}
                 </span>
-                {renderText(p.text, range, wordElRef)}
-                {anns?.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onOpenAnnotation?.(a)
-                    }}
-                    className="mx-1 inline-flex -translate-y-0.5 items-center rounded bg-accent px-1.5 py-0.5 align-middle font-sans text-[11px] font-semibold text-white hover:bg-indigo-700"
-                    title={a.transcription}
-                  >
-                    {a.label}
-                  </button>
+                {renderParagraph(p.text, range, inline, wordElRef, onOpenAnnotation)}
+                {trailing.map((a) => (
+                  <AnnotationMarker key={a.id} ann={a} onClick={onOpenAnnotation} />
                 ))}
               </p>
             )

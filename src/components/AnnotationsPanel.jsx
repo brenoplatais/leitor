@@ -1,4 +1,5 @@
 import { Edit, Trash, Download } from './Icons'
+import { typeOf } from '../lib/annotationTypes'
 
 /**
  * Right-most sidebar: every annotation for the document. Clicking one jumps the
@@ -51,19 +52,26 @@ export default function AnnotationsPanel({
           <ul className="space-y-2">
             {annotations.map((a) => {
               const para = paragraphs[a.paragraphIndex]
+              const t = typeOf(a.type)
               return (
                 <li
                   key={a.id}
                   className="group rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-accent/40"
                 >
                   <div className="mb-1 flex items-center justify-between">
-                    <button
-                      onClick={() => onJump(a.paragraphIndex)}
-                      className="rounded bg-accent px-1.5 py-0.5 text-[11px] font-semibold text-white hover:bg-indigo-700"
-                      title="Ir para o parágrafo"
-                    >
-                      {a.label}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => onJump(a.paragraphIndex)}
+                        className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-white"
+                        style={{ backgroundColor: t.hex }}
+                        title="Ir para o parágrafo"
+                      >
+                        {a.label}
+                      </button>
+                      <span className="text-[11px] font-medium" style={{ color: t.hex }}>
+                        {t.label}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
                       <button
                         onClick={() => onEdit(a)}
