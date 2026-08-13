@@ -48,6 +48,7 @@ export function exportJSON({ pdfName, paragraphs, annotations }) {
       contextSnippet: a.contextSnippet || '',
       page: paragraphs[a.paragraphIndex]?.page ?? null,
       transcription: a.transcription,
+      refinement: a.refinement || null,
       createdAt: new Date(a.createdAt).toISOString(),
     })),
   }

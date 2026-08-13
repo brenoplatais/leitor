@@ -239,12 +239,14 @@ export default function App() {
     })
   }
 
-  function saveAnnotation(text, type) {
+  function saveAnnotation(text, type, refinement) {
     setAnnotations((prev) => {
       let next
       if (annotationModal.editing) {
         next = prev.map((a) =>
-          a.id === annotationModal.editing.id ? { ...a, transcription: text, type } : a,
+          a.id === annotationModal.editing.id
+            ? { ...a, transcription: text, type, refinement: refinement || null }
+            : a,
         )
       } else {
         const n = prev.reduce((m, a) => Math.max(m, a.n ?? 0), 0) + 1
@@ -257,6 +259,7 @@ export default function App() {
           contextSnippet: annotationModal.contextSnippet || '',
           type: type || DEFAULT_TYPE,
           transcription: text,
+          refinement: refinement || null,
           createdAt: Date.now(),
         }
         next = [...prev, ann].sort(

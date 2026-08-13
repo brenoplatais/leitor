@@ -1,5 +1,6 @@
 import { Edit, Trash, Download } from './Icons'
 import { typeOf } from '../lib/annotationTypes'
+import { CONTROL_TOTAL, critiqueTypeOf } from '../lib/refinement'
 
 /**
  * Right-most sidebar: every annotation for the document. Clicking one jumps the
@@ -53,6 +54,7 @@ export default function AnnotationsPanel({
             {annotations.map((a) => {
               const para = paragraphs[a.paragraphIndex]
               const t = typeOf(a.type)
+              const ct = a.refinement?.type ? critiqueTypeOf(a.refinement.type) : null
               return (
                 <li
                   key={a.id}
@@ -71,6 +73,18 @@ export default function AnnotationsPanel({
                       <span className="text-[11px] font-medium" style={{ color: t.hex }}>
                         {t.label}
                       </span>
+                      {a.refinement && (
+                        <span
+                          className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
+                          title={
+                            (ct ? ct.name + ' · ' : '') +
+                            `refinada · score ${a.refinement.score ?? 0}/${CONTROL_TOTAL}`
+                          }
+                        >
+                          {ct ? `${ct.icon} ` : '✓ '}
+                          {a.refinement.score ?? 0}/{CONTROL_TOTAL}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
                       <button
