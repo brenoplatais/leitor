@@ -1,8 +1,8 @@
 # Leitor — anotação por voz para PDFs científicos
 
 Leia PDFs em voz alta, pause para gravar anotações faladas (transcritas em tempo
-real) e compile tudo ancorado ao texto original — direto no navegador, offline,
-sem nuvem.
+real), refine-as em críticas argumentadas e compile tudo ancorado ao texto
+original — direto no navegador, offline, sem nuvem.
 
 ## 🔗 Acesso
 
@@ -38,13 +38,39 @@ O deploy é automático via GitHub Actions ([`.github/workflows/deploy.yml`](.gi
   play/pause.
 - **Anotações por voz (STT)** — "Pausar e anotar" pausa a leitura e abre a
   gravação; a fala é transcrita ao vivo e pode ser editada antes de salvar.
+- **Refinamento de anotações** — botão **📋 Refinar** transforma uma reação em
+  crítica argumentada por meio de três abas (classificar o tipo de crítica,
+  protocolo de 6 movimentos, 8 perguntas de controle). Ver
+  [seção abaixo](#refinamento-de-anotações).
 - **Ancoragem** — cada anotação vira um marcador inline `[A#]` no parágrafo e
   entra no índice "Minhas anotações". Clicar em uma anotação leva ao parágrafo.
 - **PDF lado a lado** — visualização do PDF (esquerda) sincronizada com o texto
   extraído (direita); a página acompanha a leitura.
 - **Persistência local** — tudo é salvo em IndexedDB. "Anteriores" reabre PDFs
   já lidos, com anotações.
-- **Exportação** — JSON estruturado e Markdown compilado (Obsidian/Notion).
+- **Exportação** — JSON estruturado (inclui o refinamento de cada anotação) e
+  Markdown compilado (Obsidian/Notion).
+
+## Refinamento de anotações
+
+Além de registrar uma anotação, é possível **refiná-la** em uma crítica
+argumentada. No modal de anotação (nova ou em edição), o botão **📋 Refinar**
+abre um fluxo de três abas:
+
+- **Classificar** — escolha entre 7 tipos de crítica (interna, empírica, de
+  escopo, conceitual, política/genealógica, paradigmática e extensão produtiva),
+  cada um com a pergunta que o orienta.
+- **Protocolo** — um accordion com os 6 movimentos da crítica (reconstruir a
+  afirmação, reconhecer a função da passagem, nomear o problema, apresentar o
+  fundamento, delimitar o alcance e oferecer formulação melhor), com validação e
+  dicas por etapa.
+- **Controle** — 8 perguntas respondidas com **Sim/Não/Incerto** que dão
+  feedback em tempo real e produzem um **score** (nº de "Sim"), sinalizando a
+  solidez da crítica.
+
+Anotações refinadas exibem um selo com o tipo de crítica e o score no painel
+lateral. O refinamento é salvo no campo `refinement` da anotação (IndexedDB) e
+incluído na exportação JSON.
 
 ## Stack
 
@@ -60,6 +86,12 @@ npm run dev
 ```
 
 Abra o endereço mostrado (ex. `http://localhost:5173`).
+
+Testes da lógica de refinamento (runner nativo do Node, sem dependências extras):
+
+```bash
+npm test
+```
 
 > **Navegador:** o reconhecimento de voz (STT) da Web Speech API funciona em
 > Chrome e Edge. A síntese de voz (TTS) funciona também no Safari. Em navegadores
