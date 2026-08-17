@@ -132,7 +132,6 @@ export default function App() {
     () => paragraphs.map((p) => (p.text.trim().match(/\S+/g) || []).length),
     [paragraphs],
   )
-  const totalWords = useMemo(() => wordCounts.reduce((a, b) => a + b, 0), [wordCounts])
 
   // A 1s heartbeat keeps the countdown visibly ticking between word events.
   const [, setTick] = useState(0)
@@ -142,19 +141,32 @@ export default function App() {
     return () => clearInterval(id)
   }, [reader.reading, reader.paused])
 
+  // Words left to read within the active window [startIndex, endIndex]. With no
+  // page range set the window spans the whole document, so this is the full
+  // countdown; when a range is selected it reflects only that excerpt.
   const remainingWords = useMemo(() => {
     if (!paragraphs.length) return 0
-    let before = 0
-    for (let i = 0; i < currentIndex && i < wordCounts.length; i++) before += wordCounts[i]
+    const lo = Math.max(0, startIndex)
+    const hi = Math.min(endIndex, wordCounts.length - 1)
+    if (hi < lo) return 0
+    // Total words in the window.
+    let windowTotal = 0
+    for (let i = lo; i <= hi; i++) windowTotal += wordCounts[i]
+    // Already past the window's end → nothing left.
+    if (currentIndex > hi) return 0
+    // Words consumed in the window up to the current paragraph.
+    let consumed = 0
+    for (let i = lo; i < currentIndex && i <= hi; i++) consumed += wordCounts[i]
     // Fraction of the current paragraph already read, from the word offset.
-    const curText = paragraphs[currentIndex]?.text || ''
-    const curWords = wordCounts[currentIndex] || 0
-    let readInCur = 0
-    if (wordRange && wordRange.index === currentIndex && curText.length) {
-      readInCur = Math.round((wordRange.end / curText.length) * curWords)
+    if (currentIndex >= lo && currentIndex <= hi) {
+      const curText = paragraphs[currentIndex]?.text || ''
+      const curWords = wordCounts[currentIndex] || 0
+      if (wordRange && wordRange.index === currentIndex && curText.length) {
+        consumed += Math.round((wordRange.end / curText.length) * curWords)
+      }
     }
-    return Math.max(0, totalWords - before - readInCur)
-  }, [paragraphs, currentIndex, wordCounts, totalWords, wordRange])
+    return Math.max(0, windowTotal - consumed)
+  }, [paragraphs, currentIndex, wordCounts, wordRange, startIndex, endIndex])
 
   const remainingSeconds = wpm > 0 ? (remainingWords / wpm) * 60 : 0
 
