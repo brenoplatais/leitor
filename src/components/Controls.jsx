@@ -1,4 +1,24 @@
-import { Play, Pause, Stop, SkipBack, SkipForward, Mic, Volume, Clock } from './Icons'
+import { Play, Pause, Stop, SkipBack, SkipForward, Mic, Volume, Clock, Close } from './Icons'
+
+// Small book icon for the page-range control, matching the inline-SVG style.
+function BookIcon(p) {
+  return (
+    <svg
+      width={15}
+      height={15}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...p}
+    >
+      <path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4z" />
+      <path d="M20 4h-7a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h7z" />
+    </svg>
+  )
+}
 
 /** Seconds → "m:ss" (or "h:mm:ss" for long documents). */
 function formatDuration(totalSeconds) {
@@ -34,9 +54,23 @@ export default function Controls({
   onRateChange,
   onVolumeChange,
   onAnnotate,
+  startPage,
+  endPage,
+  pageMax,
+  onStartPageChange,
+  onEndPageChange,
 }) {
   const iconBtn =
     'flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent'
+
+  // Parse a page input to an int within [1, pageMax], or null when cleared.
+  const parsePage = (raw) => {
+    if (raw === '') return null
+    const n = parseInt(raw, 10)
+    if (Number.isNaN(n)) return null
+    return Math.max(1, Math.min(pageMax, n))
+  }
+  const rangeActive = startPage != null || endPage != null
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-200 bg-white px-4 py-2.5">
@@ -120,6 +154,50 @@ export default function Controls({
           className="w-24 accent-indigo-600"
         />
       </label>
+
+      {/* Page range — read a chapter by bounding start/end pages */}
+      {pageMax > 1 && (
+        <div
+          className="flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-1 text-sm text-slate-500"
+          title="Ler apenas de uma página até outra (ex.: um capítulo). Deixe em branco para o documento inteiro."
+        >
+          <BookIcon />
+          <span className="hidden text-xs font-medium text-slate-500 lg:inline">Págs.</span>
+          <input
+            type="number"
+            min="1"
+            max={pageMax}
+            value={startPage ?? ''}
+            onChange={(e) => onStartPageChange(parsePage(e.target.value))}
+            placeholder="1"
+            className="w-12 rounded border border-slate-200 px-1.5 py-0.5 text-center text-sm tabular-nums text-slate-600 outline-none focus:border-accent"
+            title="Página inicial"
+          />
+          <span className="text-slate-400">–</span>
+          <input
+            type="number"
+            min="1"
+            max={pageMax}
+            value={endPage ?? ''}
+            onChange={(e) => onEndPageChange(parsePage(e.target.value))}
+            placeholder={String(pageMax)}
+            className="w-12 rounded border border-slate-200 px-1.5 py-0.5 text-center text-sm tabular-nums text-slate-600 outline-none focus:border-accent"
+            title="Página final"
+          />
+          {rangeActive && (
+            <button
+              onClick={() => {
+                onStartPageChange(null)
+                onEndPageChange(null)
+              }}
+              className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              title="Limpar intervalo (ler tudo)"
+            >
+              <Close width={14} height={14} />
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="ml-auto">
         <button

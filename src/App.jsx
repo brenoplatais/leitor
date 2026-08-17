@@ -35,6 +35,9 @@ export default function App() {
   const [volume, setVolume] = useState(1)
   const [lang, setLang] = useState('')
   const [voiceURI, setVoiceURI] = useState('') // '' = auto (best available)
+  // Optional reading window by page (e.g. a single book chapter). null = open.
+  const [startPage, setStartPage] = useState(null)
+  const [endPage, setEndPage] = useState(null)
 
   const [extracting, setExtracting] = useState(null) // 0..1 progress
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -57,6 +60,32 @@ export default function App() {
   const paragraphs = doc?.paragraphs ?? []
   const effectiveLang = lang || (typeof navigator !== 'undefined' ? navigator.language : 'pt-BR')
 
+  // Highest page number in the document, and the paragraph window implied by the
+  // optional start/end page bounds.
+  const pageMax = useMemo(
+    () => paragraphs.reduce((m, p) => Math.max(m, p.page || 1), 1),
+    [paragraphs],
+  )
+  const startIndex = useMemo(() => {
+    if (startPage == null) return 0
+    const i = paragraphs.findIndex((p) => (p.page || 1) >= startPage)
+    return i < 0 ? 0 : i
+  }, [paragraphs, startPage])
+  const endIndex = useMemo(() => {
+    if (endPage == null) return paragraphs.length - 1
+    let last = -1
+    for (let i = 0; i < paragraphs.length; i++) {
+      if ((paragraphs[i].page || 1) <= endPage) last = i
+    }
+    return last < 0 ? paragraphs.length - 1 : last
+  }, [paragraphs, endPage])
+
+  // A fresh document starts with no page window.
+  useEffect(() => {
+    setStartPage(null)
+    setEndPage(null)
+  }, [doc?.id])
+
   // Voice selection: an explicit pick wins; otherwise auto-pick the best voice
   // available for the current language.
   const voices = useVoices()
@@ -72,9 +101,17 @@ export default function App() {
     volume,
     lang: effectiveLang,
     voice: selectedVoice,
+    endIndex,
     onIndexChange: handleIndexChange,
     onWord: setWordRange,
   })
+
+  // Play/resume respecting the page window: if the cursor sits outside the
+  // window, start at the window's first paragraph; otherwise start where we are.
+  const playRespectingRange = useCallback(() => {
+    const from = currentIndex < startIndex || currentIndex > endIndex ? startIndex : currentIndex
+    reader.start(from)
+  }, [reader, currentIndex, startIndex, endIndex])
 
   // Fresh byte copy for react-pdf (pdf.js may detach the buffer it receives).
   const viewerData = useMemo(
@@ -297,14 +334,14 @@ export default function App() {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || annotationModal) return
       if (e.code === 'Space') {
         e.preventDefault()
-        if (!reader.reading) reader.start(currentIndex)
+        if (!reader.reading) playRespectingRange()
         else if (reader.paused) reader.resume()
         else reader.pause()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [doc, reader, currentIndex, annotationModal])
+  }, [doc, reader, playRespectingRange, annotationModal])
 
   // Re-speak current paragraph when speed or voice changes mid-reading so the
   // change is heard immediately.
@@ -465,7 +502,7 @@ export default function App() {
               total={paragraphs.length}
               wpm={wpm}
               remainingSeconds={remainingSeconds}
-              onPlay={() => reader.start(currentIndex)}
+              onPlay={playRespectingRange}
               onPause={reader.pause}
               onResume={reader.resume}
               onStop={reader.stop}
@@ -474,6 +511,11 @@ export default function App() {
               onRateChange={setRate}
               onVolumeChange={setVolume}
               onAnnotate={openAnnotate}
+              startPage={startPage}
+              endPage={endPage}
+              pageMax={pageMax}
+              onStartPageChange={setStartPage}
+              onEndPageChange={setEndPage}
             />
           </div>
 

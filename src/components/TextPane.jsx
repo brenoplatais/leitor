@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AnnotationMarker from './AnnotationMarker'
+import { Chevron, Close } from './Icons'
 
 // Smoothly tween a container's scrollTop. We animate scrollTop ourselves rather
 // than rely on scrollIntoView({behavior:'smooth'}), which some embedded browsers
@@ -42,14 +43,24 @@ function scrollElementIntoView(container, el, block, animRef) {
 
 /**
  * Render a paragraph: plain text, with the word currently being spoken wrapped
- * in a larger highlight (`range`, non-null only for the active paragraph) and
- * annotation `markers` inserted at their exact character offsets.
+ * in a larger highlight (`range`, non-null only for the active paragraph),
+ * search matches highlighted, and annotation `markers` inserted at their exact
+ * character offsets.
  *
- * We split the text at every boundary (word range edges + each marker offset),
- * then walk the slices — emitting the marker chips at their offset and wrapping
- * the word-range slice in <mark>.
+ * We split the text at every boundary (word-range edges, each search-match
+ * edge, and each marker offset), then walk the slices — emitting marker chips at
+ * their offset and wrapping word/search slices in <mark>.
  */
-function renderParagraph(text, range, markers, markRef, onOpenAnnotation) {
+function renderParagraph(
+  text,
+  range,
+  markers,
+  markRef,
+  onOpenAnnotation,
+  searchRanges = [],
+  activeMatchIndex = -1,
+  activeMatchRef = null,
+) {
   const clamp = (n) => Math.max(0, Math.min(n ?? 0, text.length))
 
   // Group markers by clamped offset, in label order.
@@ -70,10 +81,15 @@ function renderParagraph(text, range, markers, markRef, onOpenAnnotation) {
     points.add(wStart)
     points.add(wEnd)
   }
+  for (const s of searchRanges) {
+    points.add(clamp(s.start))
+    points.add(clamp(s.end))
+  }
   const sorted = [...points].sort((a, b) => a - b)
 
   const out = []
   let wordAttached = false
+  let activeAttached = false
   for (let i = 0; i < sorted.length; i++) {
     const p = sorted[i]
     if (byOffset.has(p)) {
@@ -84,6 +100,8 @@ function renderParagraph(text, range, markers, markRef, onOpenAnnotation) {
     const next = sorted[i + 1]
     if (next === undefined || next === p) continue
     const slice = text.slice(p, next)
+
+    // The actively-spoken word wins over a search highlight on the same span.
     if (hasWord && p >= wStart && next <= wEnd) {
       out.push(
         <mark
@@ -95,9 +113,29 @@ function renderParagraph(text, range, markers, markRef, onOpenAnnotation) {
         </mark>,
       )
       wordAttached = true
-    } else {
-      out.push(<span key={'t' + p}>{slice}</span>)
+      continue
     }
+
+    const sr = searchRanges.find((s) => p >= clamp(s.start) && next <= clamp(s.end))
+    if (sr) {
+      const isActive = sr.globalIndex === activeMatchIndex
+      out.push(
+        <mark
+          key={'s' + p}
+          ref={isActive && !activeAttached ? activeMatchRef : undefined}
+          className={
+            'rounded px-0.5 text-slate-900 ' +
+            (isActive ? 'bg-orange-400 ring-2 ring-orange-500' : 'bg-yellow-200')
+          }
+        >
+          {slice}
+        </mark>,
+      )
+      if (isActive) activeAttached = true
+      continue
+    }
+
+    out.push(<span key={'t' + p}>{slice}</span>)
   }
   return out
 }
@@ -106,7 +144,7 @@ function renderParagraph(text, range, markers, markRef, onOpenAnnotation) {
  * Right pane — the extracted text as clickable paragraphs. Auto-scroll follows
  * the reader: the active paragraph is kept centered and the word being read is
  * kept in view. Inline [A#] markers show anchored annotations; clicking a
- * paragraph positions the reader there.
+ * paragraph positions the reader there. Cmd/Ctrl+F opens an in-text search.
  */
 export default function TextPane({
   pdfName,
@@ -125,6 +163,13 @@ export default function TextPane({
   const [scrollMode, setScrollMode] = useState('center')
   const [fontPx, setFontPx] = useState(17)
 
+  // In-text search (Cmd/Ctrl+F).
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeMatch, setActiveMatch] = useState(0)
+  const searchInputRef = useRef(null)
+  const activeMatchElRef = useRef(null)
+
   const FONT_MIN = 14
   const FONT_MAX = 26
 
@@ -136,6 +181,52 @@ export default function TextPane({
     }
     return map
   }, [annotations])
+
+  // Every occurrence of the query across paragraphs, in reading order.
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    const res = []
+    paragraphs.forEach((p, pi) => {
+      const t = p.text.toLowerCase()
+      let from = 0
+      for (;;) {
+        const idx = t.indexOf(q, from)
+        if (idx < 0) break
+        res.push({ paraIndex: pi, start: idx, end: idx + q.length })
+        from = idx + q.length
+      }
+    })
+    return res
+  }, [paragraphs, query])
+
+  // Search matches grouped by paragraph, tagged with their global order.
+  const searchByParagraph = useMemo(() => {
+    const map = new Map()
+    matches.forEach((m, gi) => {
+      if (!map.has(m.paraIndex)) map.set(m.paraIndex, [])
+      map.get(m.paraIndex).push({ ...m, globalIndex: gi })
+    })
+    return map
+  }, [matches])
+
+  // Reset the active match whenever the query (hence match set) changes.
+  useEffect(() => {
+    setActiveMatch(0)
+  }, [query])
+
+  // Global shortcut: Cmd/Ctrl+F opens search and selects its input.
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        setSearchOpen(true)
+        requestAnimationFrame(() => searchInputRef.current?.select())
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Center the active paragraph when reading moves between paragraphs.
   useEffect(() => {
@@ -151,8 +242,37 @@ export default function TextPane({
     scrollElementIntoView(scrollRef.current, wordElRef.current, block, animRef)
   }, [wordRange, scrollMode])
 
+  // Bring the active search match into view.
+  useEffect(() => {
+    if (!searchOpen || matches.length === 0) return
+    const el = activeMatchElRef.current || paraRefs.current[matches[activeMatch]?.paraIndex]
+    scrollElementIntoView(scrollRef.current, el, 'center', animRef)
+  }, [activeMatch, matches, searchOpen])
+
+  function closeSearch() {
+    setSearchOpen(false)
+  }
+  function gotoNext() {
+    if (matches.length) setActiveMatch((a) => (a + 1) % matches.length)
+  }
+  function gotoPrev() {
+    if (matches.length) setActiveMatch((a) => (a - 1 + matches.length) % matches.length)
+  }
+  function onSearchKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (e.shiftKey) gotoPrev()
+      else gotoNext()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      closeSearch()
+    }
+  }
+
+  const activeMatchGlobalIndex = matches.length ? activeMatch : -1
+
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="relative flex h-full flex-col bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-slate-700" title={pdfName}>
@@ -163,6 +283,18 @@ export default function TextPane({
           </p>
         </div>
         <div className="ml-3 flex shrink-0 items-center gap-2">
+          {/* Search toggle */}
+          <button
+            onClick={() => {
+              setSearchOpen(true)
+              requestAnimationFrame(() => searchInputRef.current?.select())
+            }}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+            title="Buscar no texto (⌘F / Ctrl+F)"
+          >
+            <SearchIcon /> Buscar
+          </button>
+
           {/* Font size */}
           <div className="flex items-center rounded-lg border border-slate-200">
             <button
@@ -200,6 +332,47 @@ export default function TextPane({
         </div>
       </div>
 
+      {/* Search bar */}
+      {searchOpen && (
+        <div className="absolute right-6 top-[4.25rem] z-20 flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-lg">
+          <SearchIcon />
+          <input
+            ref={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onSearchKeyDown}
+            placeholder="Buscar no texto"
+            className="w-44 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+          />
+          <span className="w-14 select-none text-right text-[11px] tabular-nums text-slate-400">
+            {matches.length ? `${activeMatch + 1}/${matches.length}` : query ? '0/0' : ''}
+          </span>
+          <button
+            onClick={gotoPrev}
+            disabled={!matches.length}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-30"
+            title="Anterior (Shift+Enter)"
+          >
+            <Chevron width={15} height={15} className="-rotate-90" />
+          </button>
+          <button
+            onClick={gotoNext}
+            disabled={!matches.length}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-30"
+            title="Próxima (Enter)"
+          >
+            <Chevron width={15} height={15} className="rotate-90" />
+          </button>
+          <button
+            onClick={closeSearch}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100"
+            title="Fechar (Esc)"
+          >
+            <Close width={15} height={15} />
+          </button>
+        </div>
+      )}
+
       <div ref={scrollRef} className="scroll-thin flex-1 overflow-auto px-6 py-6">
         <article
           className="mx-auto max-w-2xl space-y-4 font-serif leading-relaxed text-slate-800"
@@ -212,6 +385,7 @@ export default function TextPane({
             const trailing = anns.filter((a) => typeof a.charOffset !== 'number')
             const active = i === currentIndex
             const range = active && wordRange && wordRange.index === i ? wordRange : null
+            const searchRanges = searchOpen ? searchByParagraph.get(i) || [] : []
             return (
               <p
                 key={i}
@@ -230,7 +404,16 @@ export default function TextPane({
                 >
                   {i + 1}
                 </span>
-                {renderParagraph(p.text, range, inline, wordElRef, onOpenAnnotation)}
+                {renderParagraph(
+                  p.text,
+                  range,
+                  inline,
+                  wordElRef,
+                  onOpenAnnotation,
+                  searchRanges,
+                  activeMatchGlobalIndex,
+                  activeMatchElRef,
+                )}
                 {trailing.map((a) => (
                   <AnnotationMarker key={a.id} ann={a} onClick={onOpenAnnotation} />
                 ))}
@@ -245,5 +428,25 @@ export default function TextPane({
         </article>
       </div>
     </div>
+  )
+}
+
+// Small magnifier icon, matching the app's inline-SVG style.
+function SearchIcon(p) {
+  return (
+    <svg
+      width={15}
+      height={15}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...p}
+    >
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
   )
 }

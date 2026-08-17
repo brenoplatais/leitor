@@ -1,5 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+// Split a paragraph into words with their character offsets. Used by the
+// time-based highlight estimator (below).
+function tokenizeWords(text) {
+  const toks = []
+  const re = /\S+/g
+  let m
+  while ((m = re.exec(text))) {
+    toks.push({ start: m.index, end: m.index + m[0].length, word: m[0] })
+  }
+  return toks
+}
+
+// Estimated time to speak a word, in ms, scaled by the reading rate. Tuned so
+// the running average lands near the app's ~155 wpm baseline at rate 1.
+function estWordMs(word, rate) {
+  const charsPerSec = 14 * (rate || 1)
+  let ms = ((word.length + 1) / charsPerSec) * 1000
+  // A little extra dwell after sentence-final punctuation, matching the pause
+  // most voices insert.
+  if (/[.!?;:]["')\]]?$/.test(word)) ms += 220
+  return Math.max(90, ms)
+}
+
 /**
  * Sequential text-to-speech reader over an array of paragraphs.
  *
@@ -7,6 +30,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * to the next. A generation counter invalidates the `onend` handler of any
  * utterance we deliberately cancel (speed change, jump, stop) so a cancelled
  * paragraph never triggers a spurious advance.
+ *
+ * Word highlighting prefers the native `boundary` event, but many modern
+ * (enhanced/neural) voices never fire it. So we also run a time-based estimator
+ * that walks the words at their estimated pace; the first real boundary event,
+ * if any, takes over and the estimator steps aside.
+ *
+ * `endIndex` (optional) bounds auto-advance: reading stops after that paragraph,
+ * which is what powers "read pages X–Y" (e.g. a single book chapter).
  */
 export function useReader({
   paragraphs,
@@ -14,6 +45,7 @@ export function useReader({
   volume,
   lang,
   voice,
+  endIndex,
   onIndexChange,
   onWord,
   onFinish,
@@ -28,33 +60,73 @@ export function useReader({
   const activeRef = useRef(false)
   const idxRef = useRef(0)
   // Latest settings, read at speak time so live changes take effect.
-  const settingsRef = useRef({ paragraphs, rate, volume, lang, voice })
+  const settingsRef = useRef({ paragraphs, rate, volume, lang, voice, endIndex })
   const finishRef = useRef(onFinish)
   const indexRef = useRef(onIndexChange)
   const wordRef = useRef(onWord)
 
+  // Word-highlight estimator state.
+  const estTimerRef = useRef(null)
+  const estCtxRef = useRef(null) // { target, tokens, wi, gen }
+  const boundaryFiredRef = useRef(false)
+
   useEffect(() => {
-    settingsRef.current = { paragraphs, rate, volume, lang, voice }
-  }, [paragraphs, rate, volume, lang, voice])
+    settingsRef.current = { paragraphs, rate, volume, lang, voice, endIndex }
+  }, [paragraphs, rate, volume, lang, voice, endIndex])
   useEffect(() => {
     finishRef.current = onFinish
     indexRef.current = onIndexChange
     wordRef.current = onWord
   }, [onFinish, onIndexChange, onWord])
 
+  const stopEstimator = useCallback(() => {
+    if (estTimerRef.current) clearTimeout(estTimerRef.current)
+    estTimerRef.current = null
+  }, [])
+
+  // Walk the current paragraph's words on a self-scheduling timer, emitting a
+  // word range for each. Stops as soon as a real boundary event took over, the
+  // generation changed, or reading is no longer active.
+  const runEstimator = useCallback(() => {
+    const ctx = estCtxRef.current
+    if (!ctx) return
+    const tick = () => {
+      if (ctx.gen !== genRef.current || !activeRef.current || boundaryFiredRef.current) {
+        stopEstimator()
+        return
+      }
+      if (ctx.wi >= ctx.tokens.length) {
+        estTimerRef.current = null
+        return
+      }
+      const tok = ctx.tokens[ctx.wi]
+      wordRef.current?.({ index: ctx.target, start: tok.start, end: tok.end })
+      ctx.wi++
+      estTimerRef.current = setTimeout(tick, estWordMs(tok.word, settingsRef.current.rate))
+    }
+    tick()
+  }, [stopEstimator])
+
   const stop = useCallback(() => {
     activeRef.current = false
     genRef.current++
+    stopEstimator()
+    estCtxRef.current = null
+    boundaryFiredRef.current = false
     if (supported) window.speechSynthesis.cancel()
     wordRef.current?.(null)
     setReading(false)
     setPaused(false)
-  }, [supported])
+  }, [supported, stopEstimator])
 
   const speakIndex = useCallback(
     (i) => {
-      const { paragraphs, rate, volume, lang, voice } = settingsRef.current
-      if (!paragraphs || i >= paragraphs.length) {
+      const { paragraphs, rate, volume, lang, voice, endIndex } = settingsRef.current
+      const lastAllowed =
+        endIndex == null
+          ? (paragraphs?.length ?? 0) - 1
+          : Math.min(endIndex, (paragraphs?.length ?? 1) - 1)
+      if (!paragraphs || i >= paragraphs.length || i > lastAllowed) {
         stop()
         finishRef.current?.()
         return
@@ -64,7 +136,8 @@ export function useReader({
       indexRef.current?.(target)
 
       const gen = ++genRef.current
-      const u = new SpeechSynthesisUtterance(paragraphs[target].text)
+      const text = paragraphs[target].text
+      const u = new SpeechSynthesisUtterance(text)
       u.rate = rate
       u.volume = volume
       // A chosen voice carries its own locale; fall back to the language hint.
@@ -74,11 +147,21 @@ export function useReader({
       } else if (lang) {
         u.lang = lang
       }
-      // Word-level highlighting: the boundary event reports the character
-      // offset of the word about to be spoken. We derive the word's end from
-      // charLength when the browser provides it, otherwise scan to the next
-      // whitespace, and report the range so the UI can follow along live.
-      const text = paragraphs[target].text
+
+      // Prepare the estimator for this paragraph; it starts on `onstart`.
+      stopEstimator()
+      boundaryFiredRef.current = false
+      estCtxRef.current = { target, tokens: tokenizeWords(text), wi: 0, gen }
+
+      u.onstart = () => {
+        if (gen !== genRef.current || !activeRef.current || boundaryFiredRef.current) return
+        estCtxRef.current = { target, tokens: tokenizeWords(text), wi: 0, gen }
+        runEstimator()
+      }
+
+      // Native word-level highlighting: the boundary event reports the character
+      // offset of the word about to be spoken. When it fires, it's authoritative
+      // — hand highlighting over to it and stand the estimator down.
       u.onboundary = (e) => {
         if (gen !== genRef.current || !activeRef.current) return
         if (e.name && e.name !== 'word') return
@@ -89,9 +172,12 @@ export function useReader({
           while (end < text.length && !/\s/.test(text[end])) end++
         }
         if (end <= start) return
+        boundaryFiredRef.current = true
+        stopEstimator()
         wordRef.current?.({ index: target, start, end })
       }
       u.onend = () => {
+        stopEstimator()
         if (gen === genRef.current && activeRef.current) speakIndex(target + 1)
       }
       u.onerror = (e) => {
@@ -103,7 +189,7 @@ export function useReader({
       window.speechSynthesis.cancel()
       window.speechSynthesis.speak(u)
     },
-    [stop],
+    [stop, stopEstimator, runEstimator],
   )
 
   const start = useCallback(
@@ -119,15 +205,20 @@ export function useReader({
 
   const pause = useCallback(() => {
     if (!supported || !activeRef.current) return
+    // Freeze the estimated highlight in place; native speech keeps its own state.
+    stopEstimator()
     window.speechSynthesis.pause()
     setPaused(true)
-  }, [supported])
+  }, [supported, stopEstimator])
 
   const resume = useCallback(() => {
     if (!supported || !activeRef.current) return
     window.speechSynthesis.resume()
     setPaused(false)
-  }, [supported])
+    // Only the estimator needs restarting; native boundary events resume on
+    // their own with the audio.
+    if (estCtxRef.current && !boundaryFiredRef.current) runEstimator()
+  }, [supported, runEstimator])
 
   /** Move to an arbitrary paragraph; keeps reading if we were reading. */
   const jumpTo = useCallback(
@@ -163,10 +254,14 @@ export function useReader({
     return () => clearInterval(id)
   }, [supported, paused])
 
-  // Clean up any in-flight speech on unmount.
-  useEffect(() => () => {
-    if (supported) window.speechSynthesis.cancel()
-  }, [supported])
+  // Clean up any in-flight speech and the estimator on unmount.
+  useEffect(
+    () => () => {
+      if (estTimerRef.current) clearTimeout(estTimerRef.current)
+      if (supported) window.speechSynthesis.cancel()
+    },
+    [supported],
+  )
 
   return {
     supported,
