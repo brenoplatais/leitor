@@ -23,6 +23,7 @@ const LANGUAGES = [
   { code: '', label: 'Idioma do navegador' },
   { code: 'pt-BR', label: 'Português (BR)' },
   { code: 'en-US', label: 'English (US)' },
+  { code: 'es-ES', label: 'Español (ES)' },
 ]
 
 export default function App() {
