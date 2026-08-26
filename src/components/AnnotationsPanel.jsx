@@ -1,6 +1,7 @@
 import { Edit, Trash, Download } from './Icons'
 import { typeOf } from '../lib/annotationTypes'
 import { CONTROL_TOTAL, critiqueTypeOf } from '../lib/refinement'
+import { stampOf } from '../lib/stamps'
 
 /**
  * Right-most sidebar: every annotation for the document. Clicking one jumps the
@@ -55,6 +56,8 @@ export default function AnnotationsPanel({
               const para = paragraphs[a.paragraphIndex]
               const t = typeOf(a.type)
               const ct = a.refinement?.type ? critiqueTypeOf(a.refinement.type) : null
+              const stamp = a.kind === 'stamp' ? stampOf(a.stampId) : null
+              const chipHex = stamp ? stamp.hex : t.hex
               return (
                 <li
                   key={a.id}
@@ -65,13 +68,13 @@ export default function AnnotationsPanel({
                       <button
                         onClick={() => onJump(a.paragraphIndex)}
                         className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-white"
-                        style={{ backgroundColor: t.hex }}
+                        style={{ backgroundColor: chipHex }}
                         title="Ir para o parágrafo"
                       >
-                        {a.label}
+                        {stamp ? stamp.icon : a.label}
                       </button>
-                      <span className="text-[11px] font-medium" style={{ color: t.hex }}>
-                        {t.label}
+                      <span className="text-[11px] font-medium" style={{ color: chipHex }}>
+                        {stamp ? stamp.label : t.label}
                       </span>
                       {a.refinement && (
                         <span
@@ -87,13 +90,15 @@ export default function AnnotationsPanel({
                       )}
                     </div>
                     <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                      <button
-                        onClick={() => onEdit(a)}
-                        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        title="Editar"
-                      >
-                        <Edit width={15} height={15} />
-                      </button>
+                      {!stamp && (
+                        <button
+                          onClick={() => onEdit(a)}
+                          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          title="Editar"
+                        >
+                          <Edit width={15} height={15} />
+                        </button>
+                      )}
                       <button
                         onClick={() => onDelete(a)}
                         className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-500"
@@ -108,7 +113,13 @@ export default function AnnotationsPanel({
                     onClick={() => onJump(a.paragraphIndex)}
                     className="block w-full text-left"
                   >
-                    <p className="text-sm leading-snug text-slate-700">{a.transcription}</p>
+                    {stamp ? (
+                      <p className="text-sm italic leading-snug text-slate-500">
+                        “{a.contextSnippet || para?.text?.slice(0, 120) || ''}”
+                      </p>
+                    ) : (
+                      <p className="text-sm leading-snug text-slate-700">{a.transcription}</p>
+                    )}
                     <p className="mt-1.5 text-[11px] text-slate-400">
                       pág. {para?.page ?? '?'} · parágrafo {a.paragraphIndex + 1} ·{' '}
                       {new Date(a.createdAt).toLocaleString()}

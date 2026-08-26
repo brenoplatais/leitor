@@ -4,6 +4,7 @@ import TextPane from './components/TextPane'
 import Controls from './components/Controls'
 import AnnotationModal from './components/AnnotationModal'
 import AnnotationsPanel from './components/AnnotationsPanel'
+import StampBar from './components/StampBar'
 import LibraryModal from './components/LibraryModal'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Upload, Library } from './components/Icons'
@@ -278,7 +279,43 @@ export default function App() {
     })
   }
 
+  // One-click stamp at the reader's current position. Doesn't pause reading.
+  function addStamp(stampId) {
+    if (!doc) return
+    const pText = paragraphs[currentIndex]?.text || ''
+    const charOffset = wordRange && wordRange.index === currentIndex ? wordRange.start : 0
+    setAnnotations((prev) => {
+      const n = prev.reduce((m, a) => Math.max(m, a.n ?? 0), 0) + 1
+      const ann = {
+        id: crypto.randomUUID(),
+        n,
+        label: `A${n}`,
+        kind: 'stamp',
+        stampId,
+        paragraphIndex: currentIndex,
+        charOffset,
+        contextSnippet: contextAround(pText, charOffset),
+        type: DEFAULT_TYPE,
+        transcription: '',
+        createdAt: Date.now(),
+      }
+      const next = [...prev, ann].sort(
+        (a, b) =>
+          a.paragraphIndex - b.paragraphIndex ||
+          (a.charOffset ?? 0) - (b.charOffset ?? 0) ||
+          a.n - b.n,
+      )
+      persistAnnotations(next)
+      return next
+    })
+  }
+
   function editAnnotation(a) {
+    // Stamps carry no editable transcript — clicking one just jumps to it.
+    if (a.kind === 'stamp') {
+      selectParagraph(a.paragraphIndex)
+      return
+    }
     const pText = paragraphs[a.paragraphIndex]?.text || ''
     const charOffset = a.charOffset ?? 0
     setAnnotationModal({
@@ -505,6 +542,7 @@ export default function App() {
                 onOpenAnnotation={editAnnotation}
               />
             </div>
+            <StampBar onStamp={addStamp} disabled={!doc} />
             <Controls
               reading={reader.reading}
               paused={reader.paused}
