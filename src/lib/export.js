@@ -54,6 +54,7 @@ export function exportJSON({ pdfName, paragraphs, annotations }) {
     paragraphs: paragraphs.map((p, i) => ({
       index: i,
       page: p.page,
+      pageMarker: p.pageMarker || false,
       text: p.text,
     })),
     annotations: annotations.map((a) => ({
@@ -98,6 +99,11 @@ export function exportMarkdown({ pdfName, paragraphs, annotations }) {
   lines.push('')
 
   paragraphs.forEach((p, i) => {
+    if (p.pageMarker) {
+      lines.push(`### ${p.text}`)
+      lines.push('')
+      return
+    }
     const anns = byPara.get(i)
     const markers = anns ? ' ' + anns.map(inlineMarker).join(' ') : ''
     lines.push(`${p.text}${markers}`)

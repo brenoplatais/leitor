@@ -193,18 +193,25 @@ export default function App() {
 
     const existing = await getDocument(id)
     if (existing?.paragraphs?.length) {
-      setDoc({
-        id,
-        pdfName: existing.pdfName,
-        numPages: existing.numPages,
-        paragraphs: existing.paragraphs,
-        bytes,
-      })
-      setAnnotations(existing.annotations ?? [])
-      setCurrentIndex(existing.progressIndex ?? 0) // resume where we stopped
-      // refresh the stored blob so the record stays openable
-      patchDocument(id, { blob: file })
-      return
+      // Reuse the cache when it already has the new extraction, or when it holds
+      // annotations (re-extracting would shift the indices they anchor to).
+      const isNewExtraction = existing.paragraphs.some((p) => p.pageMarker)
+      const hasNotes = (existing.annotations?.length ?? 0) > 0
+      if (isNewExtraction || hasNotes) {
+        setDoc({
+          id,
+          pdfName: existing.pdfName,
+          numPages: existing.numPages,
+          paragraphs: existing.paragraphs,
+          bytes,
+        })
+        setAnnotations(existing.annotations ?? [])
+        setCurrentIndex(existing.progressIndex ?? 0) // resume where we stopped
+        // refresh the stored blob so the record stays openable
+        patchDocument(id, { blob: file })
+        return
+      }
+      // else: an un-annotated old-format doc — fall through to re-extract it.
     }
 
     setExtracting(0)
@@ -246,11 +253,28 @@ export default function App() {
     reader.stop()
     setCurrentIndex(0)
     const bytes = await record.blob.arrayBuffer()
+
+    // Upgrade an un-annotated old-format doc to the header/footer-aware
+    // extraction with page markers (annotated docs keep their anchors).
+    let paragraphs = record.paragraphs
+    let numPages = record.numPages
+    const isNewExtraction = record.paragraphs?.some((p) => p.pageMarker)
+    const hasNotes = (record.annotations?.length ?? 0) > 0
+    if (record.paragraphs?.length && !isNewExtraction && !hasNotes) {
+      try {
+        paragraphs = await extractParagraphs(bytes)
+        numPages = paragraphs[paragraphs.length - 1]?.page ?? numPages
+        await patchDocument(record.id, { paragraphs, numPages })
+      } catch {
+        paragraphs = record.paragraphs
+      }
+    }
+
     setDoc({
       id: record.id,
       pdfName: record.pdfName,
-      numPages: record.numPages,
-      paragraphs: record.paragraphs,
+      numPages,
+      paragraphs,
       bytes,
     })
     setAnnotations(record.annotations ?? [])

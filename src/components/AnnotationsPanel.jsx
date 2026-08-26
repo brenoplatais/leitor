@@ -27,16 +27,16 @@ export default function AnnotationsPanel({
         <div className="flex gap-1">
           <button
             onClick={onExportMarkdown}
-            disabled={annotations.length === 0}
-            title="Exportar Markdown"
+            disabled={paragraphs.length === 0}
+            title="Exportar o texto lido com anotações e carimbos (Markdown)"
             className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
           >
             <Download width={14} height={14} /> MD
           </button>
           <button
             onClick={onExportJSON}
-            disabled={annotations.length === 0}
-            title="Exportar JSON"
+            disabled={paragraphs.length === 0}
+            title="Exportar o texto lido com anotações e carimbos (JSON)"
             className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
           >
             <Download width={14} height={14} /> JSON

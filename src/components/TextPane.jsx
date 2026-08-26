@@ -379,6 +379,30 @@ export default function TextPane({
           style={{ fontSize: `${fontPx}px` }}
         >
           {paragraphs.map((p, i) => {
+            // Page-turn marker: a divider, still spoken by the reader.
+            if (p.pageMarker) {
+              const active = i === currentIndex
+              return (
+                <div
+                  key={i}
+                  ref={(el) => (paraRefs.current[i] = el)}
+                  className="flex select-none items-center gap-3 py-1 font-sans"
+                >
+                  <span className="h-px flex-1 bg-slate-200" />
+                  <span
+                    className={
+                      'rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ' +
+                      (active
+                        ? 'bg-amber-200 text-amber-800'
+                        : 'bg-slate-100 text-slate-400')
+                    }
+                  >
+                    {p.text}
+                  </span>
+                  <span className="h-px flex-1 bg-slate-200" />
+                </div>
+              )
+            }
             const anns = byParagraph.get(i) || []
             // Precise markers have a charOffset; legacy ones render at the end.
             const inline = anns.filter((a) => typeof a.charOffset === 'number')
