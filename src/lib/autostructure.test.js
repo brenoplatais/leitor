@@ -1,7 +1,8 @@
-// Unit tests for the structural section detector. Run with: node --test
+// Unit tests for the precision-first structural section detector.
+// Run with: node --test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectStructure } from './autostructure.js'
+import { detectStructure, leadingHeading } from './autostructure.js'
 
 const P = (text) => ({ text, page: 1 })
 const MARK = (n) => ({ text: `Página ${n}`, page: n, pageMarker: true })
@@ -12,50 +13,58 @@ function detectMap(paragraphs) {
   return out
 }
 
-test('detects the core sections by their cue phrases', () => {
+test('leadingHeading extracts an all-caps heading, else null', () => {
+  assert.equal(leadingHeading('RESUMO O presente texto apresenta'), 'RESUMO')
+  assert.equal(leadingHeading('CONSIDERAÇÕES FINAIS Essas trilhas'), 'CONSIDERAÇÕES FINAIS')
+  assert.equal(leadingHeading('REFERÊNCIAS Baptista, M. L.'), 'REFERÊNCIAS')
+  assert.equal(leadingHeading('1 INTRODUÇÃO O turismo cresce'), '1 INTRODUÇÃO')
+  assert.equal(leadingHeading('Este artigo trata do tema'), null)
+  assert.equal(leadingHeading('A metodologia deixa de ser rígida'), null)
+})
+
+test('headings drive detection; references and back-matter are ignored', () => {
   const paras = [
     MARK(1),
-    P('Este artigo trata do turismo de base comunitária no litoral nordestino.'), // 1: tema (opening)
-    P('O turismo cresce cada vez mais no Brasil; dados da OMT apontam aumento expressivo.'), // 2: relevância
-    P('Segundo autores como Silva (2019), o fenômeno já foi tratado na literatura da área.'), // 3: contexto teórico
-    P('Ainda assim, poucos estudos abordaram essa relação, evidenciando uma lacuna de pesquisa.'), // 4: lacuna
-    P('O objetivo deste trabalho é analisar as práticas de hospedagem solidária.'), // 5: objetivo
-    P('A metodologia adotada foi qualitativa, com entrevistas e análise de conteúdo.'), // 6: metodologia
-    P('Este trabalho contribui para o campo do turismo ao ampliar o conceito.'), // 7: contribuições
+    P('INTRODUÇÃO O turismo é um fenômeno relevante e crescente na sociedade contemporânea.'), // 1 → tema
+    P('Diversos autores discutem o tema em trabalhos recentes.'),
+    P('OBJETIVOS O objetivo deste trabalho é analisar a hospedagem solidária.'), // 3 → objetivo
+    P('METODOLOGIA A metodologia adotada foi qualitativa, com entrevistas.'), // 4 → metodologia
+    P('Resultados diversos foram observados no campo estudado.'),
+    P('CONSIDERAÇÕES FINAIS Este trabalho contribui para o campo do turismo.'), // 6 → contribuições
+    P('REFERÊNCIAS Silva, J. (2019). Turismo. Editora.'), // 7 → references boundary
+    P('Souza, M. (2020). Hospitalidade solidária. Editora.'), // 8 → ignored
   ]
   const m = detectMap(paras)
   assert.equal(m.get(1), 'tema_central')
-  assert.equal(m.get(2), 'relevancia_social')
-  assert.equal(m.get(3), 'contexto_teorico')
-  assert.equal(m.get(4), 'lacuna_pesquisa')
-  assert.equal(m.get(5), 'objetivo')
-  assert.equal(m.get(6), 'metodologia')
-  assert.equal(m.get(7), 'contribuicoes')
+  assert.equal(m.get(3), 'objetivo')
+  assert.equal(m.get(4), 'metodologia')
+  assert.equal(m.get(6), 'contribuicoes')
+  assert.equal(m.has(7), false, 'a linha de REFERÊNCIAS não é carimbada')
+  assert.equal(m.has(8), false, 'referências não são carimbadas')
 })
 
-test('unique sections keep only the strongest paragraph', () => {
+test('essay traps: abstract skipped, quotes and stray "metodologia" do not fire', () => {
   const paras = [
-    P('O objetivo deste trabalho é X.'),
-    P('Além disso, o objetivo deste estudo é também Y, de forma ainda mais explícita e detalhada.'),
-    P('Texto qualquer sem pistas relevantes de estrutura.'),
-  ]
-  const objetivos = detectStructure(paras).filter((s) => s.stampId === 'objetivo')
-  assert.equal(objetivos.length, 1, 'objetivo é único (max 1)')
-})
-
-test('page markers are never tagged', () => {
-  const paras = [MARK(1), P('Este artigo investiga o tema.'), MARK(2), P('conteúdo.')]
-  const idxs = detectStructure(paras).map((s) => s.paragraphIndex)
-  assert.ok(!idxs.includes(0) && !idxs.includes(2), 'marcadores de página não são marcados')
-})
-
-test('plain prose with no cues yields no false positives (beyond the opening theme)', () => {
-  const paras = [
-    P('Uma frase de abertura neutra sobre o assunto.'), // opening → tema is allowed
-    P('Outra frase comum, apenas descrevendo a paisagem observada.'),
-    P('Mais texto corrido, narrando o cotidiano da região visitada.'),
+    MARK(1),
+    P('RESUMO O presente texto apresenta a proposição da cartografia de saberes como orientação metodológica para a pesquisa em turismo, numa perspectiva complexa e transdisciplinar.'), // abstract → skip
+    P('PLATÔ INICIAL A proposta deste texto é partilhar a cartografia de saberes como orientação metodológica, ao longo de anos de docência em pesquisa qualitativa e complexa no campo do turismo contemporâneo brasileiro.'), // 2 → tema (first prose)
+    P('Se a reforma do pensamento científico ainda não foi concebida, só nos resta começar, afirma o autor citado no texto.'), // 3 → NOT lacuna (quote, "ainda não")
+    P('A metodologia deixa de ser uma engrenagem rígida e passa a ser construída no processo de investigação.'), // 4 → NOT metodologia (no "metodologia adotada")
+    P('REFERÊNCIAS Guattari, F. (1992). Caosmose. Editora 34.'),
   ]
   const detected = detectStructure(paras)
-  const nonTheme = detected.filter((s) => s.stampId !== 'tema_central')
-  assert.equal(nonTheme.length, 0, 'sem falsos positivos além do tema de abertura')
+  assert.deepEqual(
+    detected.map((d) => [d.paragraphIndex, d.stampId]),
+    [[2, 'tema_central']],
+    'somente o parágrafo de abertura vira tema; nada de falsos positivos',
+  )
+})
+
+test('a citation-heavy paragraph without a heading is not tagged as contexto', () => {
+  const paras = [
+    P('Introdução em prosa suficientemente longa para servir de tema de abertura, tratando do fenômeno turístico e sua importância para as comunidades locais estudadas neste artigo.'),
+    P('Conforme Silva (2019), Souza (2020) e Costa (2021), o fenômeno já foi discutido; para Lima (2018) há convergências, e segundo Rocha (2017) também.'),
+  ]
+  const m = detectMap(paras)
+  assert.equal(m.get(1), undefined, 'contexto é só por título; citações não disparam')
 })
