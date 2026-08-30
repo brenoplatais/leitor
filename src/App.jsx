@@ -6,6 +6,7 @@ import AnnotationModal from './components/AnnotationModal'
 import AnnotationsPanel from './components/AnnotationsPanel'
 import StampBar from './components/StampBar'
 import LibraryModal from './components/LibraryModal'
+import { detectStructure } from './lib/autostructure'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Upload, Library } from './components/Icons'
 import { useReader } from './hooks/useReader'
@@ -40,6 +41,8 @@ export default function App() {
   // Optional reading window by page (e.g. a single book chapter). null = open.
   const [startPage, setStartPage] = useState(null)
   const [endPage, setEndPage] = useState(null)
+  // Transient feedback for the "Detectar estrutura" action.
+  const [detectMsg, setDetectMsg] = useState('')
 
   const [extracting, setExtracting] = useState(null) // 0..1 progress
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -334,6 +337,53 @@ export default function App() {
     })
   }
 
+  // Heuristically detect the article's structural sections and stamp them. Auto
+  // stamps carry `auto: true`; re-running replaces them but keeps manual stamps.
+  function autodetectStructure() {
+    if (!doc) return
+    const suggestions = detectStructure(paragraphs)
+    const manual = annotations.filter((a) => !(a.kind === 'stamp' && a.auto))
+    const taken = new Set(
+      manual.filter((a) => a.kind === 'stamp').map((a) => a.paragraphIndex + ':' + a.stampId),
+    )
+    let n = manual.reduce((m, a) => Math.max(m, a.n ?? 0), 0)
+    const added = []
+    for (const s of suggestions) {
+      if (taken.has(s.paragraphIndex + ':' + s.stampId)) continue
+      const pText = paragraphs[s.paragraphIndex]?.text || ''
+      n += 1
+      added.push({
+        id: crypto.randomUUID(),
+        n,
+        label: `A${n}`,
+        kind: 'stamp',
+        stampId: s.stampId,
+        auto: true,
+        paragraphIndex: s.paragraphIndex,
+        charOffset: 0,
+        contextSnippet: contextAround(pText, 0),
+        type: DEFAULT_TYPE,
+        transcription: '',
+        createdAt: Date.now(),
+      })
+    }
+    const next = [...manual, ...added].sort(
+      (a, b) =>
+        a.paragraphIndex - b.paragraphIndex ||
+        (a.charOffset ?? 0) - (b.charOffset ?? 0) ||
+        a.n - b.n,
+    )
+    setAnnotations(next)
+    persistAnnotations(next)
+    setDetectMsg(
+      added.length
+        ? `${added.length} seç${added.length === 1 ? 'ão' : 'ões'} detectada${added.length === 1 ? '' : 's'}`
+        : 'Nada detectado com confiança',
+    )
+    window.clearTimeout(autodetectStructure._t)
+    autodetectStructure._t = window.setTimeout(() => setDetectMsg(''), 4000)
+  }
+
   function editAnnotation(a) {
     // Stamps carry no editable transcript — clicking one just jumps to it.
     if (a.kind === 'stamp') {
@@ -566,7 +616,12 @@ export default function App() {
                 onOpenAnnotation={editAnnotation}
               />
             </div>
-            <StampBar onStamp={addStamp} disabled={!doc} />
+            <StampBar
+              onStamp={addStamp}
+              onDetect={autodetectStructure}
+              detectMsg={detectMsg}
+              disabled={!doc}
+            />
             <Controls
               reading={reader.reading}
               paused={reader.paused}

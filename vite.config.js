@@ -8,7 +8,8 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   server: {
-    port: 5173,
+    // Honor a PORT env var when provided (e.g. by a host), else default to 5173.
+    port: process.env.PORT ? Number(process.env.PORT) : 5173,
   },
   // pdfjs ships as an ESM worker; keep it out of pre-bundling so the
   // `?url` import resolves to a real file at build time.
