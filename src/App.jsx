@@ -5,8 +5,11 @@ import Controls from './components/Controls'
 import AnnotationModal from './components/AnnotationModal'
 import AnnotationsPanel from './components/AnnotationsPanel'
 import StampBar from './components/StampBar'
+import AiSettingsModal from './components/AiSettingsModal'
 import LibraryModal from './components/LibraryModal'
 import { detectStructure } from './lib/autostructure'
+import { detectStructureAI } from './lib/aiStructure'
+import { loadAiConfig, saveAiConfig, isAiReady } from './lib/aiConfig'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Upload, Library } from './components/Icons'
 import { useReader } from './hooks/useReader'
@@ -43,6 +46,10 @@ export default function App() {
   const [endPage, setEndPage] = useState(null)
   // Transient feedback for the "Detectar estrutura" action.
   const [detectMsg, setDetectMsg] = useState('')
+  // AI mode (opt-in): config in localStorage, plus in-flight + settings state.
+  const [aiConfig, setAiConfig] = useState(loadAiConfig)
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false)
+  const [detecting, setDetecting] = useState(false)
 
   const [extracting, setExtracting] = useState(null) // 0..1 progress
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -337,11 +344,16 @@ export default function App() {
     })
   }
 
-  // Heuristically detect the article's structural sections and stamp them. Auto
-  // stamps carry `auto: true`; re-running replaces them but keeps manual stamps.
-  function autodetectStructure() {
-    if (!doc) return
-    const suggestions = detectStructure(paragraphs)
+  function flashDetectMsg(msg) {
+    setDetectMsg(msg)
+    window.clearTimeout(flashDetectMsg._t)
+    flashDetectMsg._t = window.setTimeout(() => setDetectMsg(''), 5000)
+  }
+
+  // Turn detection suggestions into stamp annotations. Auto stamps carry
+  // `auto: true`; re-running replaces them but keeps manual stamps. Returns the
+  // number added.
+  function applyAutoStamps(suggestions) {
     const manual = annotations.filter((a) => !(a.kind === 'stamp' && a.auto))
     const taken = new Set(
       manual.filter((a) => a.kind === 'stamp').map((a) => a.paragraphIndex + ':' + a.stampId),
@@ -375,13 +387,44 @@ export default function App() {
     )
     setAnnotations(next)
     persistAnnotations(next)
-    setDetectMsg(
-      added.length
-        ? `${added.length} seç${added.length === 1 ? 'ão' : 'ões'} detectada${added.length === 1 ? '' : 's'}`
-        : 'Nada detectado com confiança',
-    )
-    window.clearTimeout(autodetectStructure._t)
-    autodetectStructure._t = window.setTimeout(() => setDetectMsg(''), 4000)
+    return added.length
+  }
+
+  const foundMsg = (n, via) =>
+    n
+      ? `${n === 1 ? '1 seção detectada' : n + ' seções detectadas'}${via ? ' ' + via : ''}`
+      : 'Nada detectado com confiança'
+
+  // Detect the article's structural sections: AI when enabled, else the offline
+  // heuristic. Both produce the same suggestion shape.
+  async function autodetectStructure() {
+    if (!doc || detecting) return
+    if (isAiReady(aiConfig)) {
+      setDetecting(true)
+      setDetectMsg('Detectando com IA…')
+      try {
+        const suggestions = await detectStructureAI(paragraphs, aiConfig)
+        flashDetectMsg(foundMsg(applyAutoStamps(suggestions), 'por IA'))
+      } catch (err) {
+        const status = err?.status
+        flashDetectMsg(
+          status === 401
+            ? 'Chave de API inválida'
+            : status === 429
+              ? 'Limite de uso atingido — tente mais tarde'
+              : 'Falha na IA: ' + (err?.message || err),
+        )
+      } finally {
+        setDetecting(false)
+      }
+      return
+    }
+    flashDetectMsg(foundMsg(applyAutoStamps(detectStructure(paragraphs))))
+  }
+
+  function saveAiSettings(cfg) {
+    setAiConfig(saveAiConfig(cfg))
+    setAiSettingsOpen(false)
   }
 
   function editAnnotation(a) {
@@ -619,6 +662,9 @@ export default function App() {
             <StampBar
               onStamp={addStamp}
               onDetect={autodetectStructure}
+              onOpenAiSettings={() => setAiSettingsOpen(true)}
+              aiActive={isAiReady(aiConfig)}
+              detecting={detecting}
               detectMsg={detectMsg}
               disabled={!doc}
             />
@@ -681,6 +727,12 @@ export default function App() {
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
         onOpen={loadFromLibrary}
+      />
+      <AiSettingsModal
+        open={aiSettingsOpen}
+        initial={aiConfig}
+        onSave={saveAiSettings}
+        onClose={() => setAiSettingsOpen(false)}
       />
     </div>
   )

@@ -5,19 +5,41 @@ import { STAMP_GROUPS, stampsInGroup } from '../lib/stamps'
  * A row of one-click reading stamps, split into groups. Clicking a stamp drops a
  * mark at the reader's current position — no modal, reading isn't interrupted.
  */
-export default function StampBar({ onStamp, onDetect, detectMsg, disabled }) {
+export default function StampBar({
+  onStamp,
+  onDetect,
+  onOpenAiSettings,
+  aiActive,
+  detecting,
+  detectMsg,
+  disabled,
+}) {
   return (
     <div className="scroll-thin flex items-center gap-1.5 overflow-x-auto border-t border-slate-200 bg-slate-50 px-4 py-2">
       {onDetect && (
         <>
           <button
             onClick={onDetect}
-            disabled={disabled}
+            disabled={disabled || detecting}
             title="Detectar automaticamente as seções do artigo (tema, objetivo, lacuna, método…) e carimbá-las"
             className="flex shrink-0 items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40"
           >
-            ✨ Detectar estrutura
+            {detecting ? '⏳ Detectando…' : `✨ Detectar estrutura${aiActive ? ' (IA)' : ''}`}
           </button>
+          {onOpenAiSettings && (
+            <button
+              onClick={onOpenAiSettings}
+              title="Configurar detecção por IA"
+              className={
+                'shrink-0 rounded-full border px-2 py-1 text-xs transition ' +
+                (aiActive
+                  ? 'border-accent text-accent hover:bg-accent-soft'
+                  : 'border-slate-200 text-slate-400 hover:bg-slate-100')
+              }
+            >
+              ⚙︎ IA
+            </button>
+          )}
           {detectMsg && (
             <span className="shrink-0 text-[11px] text-slate-500">{detectMsg}</span>
           )}
