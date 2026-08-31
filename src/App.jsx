@@ -57,6 +57,9 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false)
 
   const fileInputRef = useRef(null)
+  // TextPane assigns a function here that reads the current text selection as a
+  // paragraph range, so addStamp can mark the selected passage.
+  const selectionApiRef = useRef(null)
   // Current doc id in a ref so the reader's index callback can persist reading
   // progress without clobbering it during a document switch.
   const docIdRef = useRef(null)
@@ -313,11 +316,29 @@ export default function App() {
     })
   }
 
-  // One-click stamp at the reader's current position. Doesn't pause reading.
+  // Stamp a passage. If text is selected, mark that exact range (highlighted in
+  // the stamp's color); otherwise fall back to the reader's current position.
+  // Doesn't pause reading.
   function addStamp(stampId) {
     if (!doc) return
-    const pText = paragraphs[currentIndex]?.text || ''
-    const charOffset = wordRange && wordRange.index === currentIndex ? wordRange.start : 0
+    const sel = selectionApiRef.current ? selectionApiRef.current() : null
+    let paragraphIndex
+    let charOffset
+    let charEnd
+    let contextSnippet
+    if (sel && sel.quote) {
+      paragraphIndex = sel.paragraphIndex
+      charOffset = sel.charStart
+      charEnd = sel.charEnd
+      const q = sel.quote.trim()
+      contextSnippet = q.length > 160 ? q.slice(0, 160) + '…' : q
+    } else {
+      paragraphIndex = currentIndex
+      const pText = paragraphs[currentIndex]?.text || ''
+      charOffset = wordRange && wordRange.index === currentIndex ? wordRange.start : 0
+      charEnd = charOffset
+      contextSnippet = contextAround(pText, charOffset)
+    }
     setAnnotations((prev) => {
       const n = prev.reduce((m, a) => Math.max(m, a.n ?? 0), 0) + 1
       const ann = {
@@ -326,9 +347,10 @@ export default function App() {
         label: `A${n}`,
         kind: 'stamp',
         stampId,
-        paragraphIndex: currentIndex,
+        paragraphIndex,
         charOffset,
-        contextSnippet: contextAround(pText, charOffset),
+        charEnd,
+        contextSnippet,
         type: DEFAULT_TYPE,
         transcription: '',
         createdAt: Date.now(),
@@ -342,6 +364,12 @@ export default function App() {
       persistAnnotations(next)
       return next
     })
+    // Clear the selection so the highlight (not the browser blue) shows the mark.
+    try {
+      window.getSelection()?.removeAllRanges()
+    } catch {
+      /* ignore */
+    }
   }
 
   function flashDetectMsg(msg) {
@@ -658,6 +686,7 @@ export default function App() {
                 annotations={annotations}
                 onSelectParagraph={selectParagraph}
                 onOpenAnnotation={editAnnotation}
+                selectionApi={selectionApiRef}
               />
             </div>
             <StampBar

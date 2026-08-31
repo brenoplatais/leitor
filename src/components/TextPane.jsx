@@ -1,6 +1,55 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AnnotationMarker from './AnnotationMarker'
+import { stampOf } from '../lib/stamps'
 import { Chevron, Close } from './Icons'
+
+/** Translucent version of a stamp's hex color, for highlighting a passage. */
+function hexToRgba(hex, alpha) {
+  const h = (hex || '#888888').replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const n = parseInt(full, 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
+
+// --- selection → character-offset mapping ----------------------------------
+/** Nearest ancestor that wraps a paragraph's own text (marked data-ptext). */
+function ptextElOf(node) {
+  let el = node && (node.nodeType === 3 ? node.parentElement : node)
+  while (el && !(el.dataset && 'ptext' in el.dataset)) el = el.parentElement
+  return el
+}
+
+/**
+ * Character offset of (container, offset) within a paragraph's data-ptext
+ * element, counting only its own text (skipping inserted [data-skip] chips).
+ */
+function offsetInPtext(ptextEl, container, offset) {
+  if (container.nodeType !== 3) {
+    const child = container.childNodes[offset]
+    if (child) {
+      container = child
+      offset = 0
+    }
+  }
+  let acc = 0
+  const walker = document.createTreeWalker(ptextEl, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      let pp = n.parentElement
+      while (pp && pp !== ptextEl) {
+        if (pp.dataset && 'skip' in pp.dataset) return NodeFilter.FILTER_REJECT
+        pp = pp.parentElement
+      }
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+  let cur
+  while ((cur = walker.nextNode())) {
+    if (cur === container) return acc + offset
+    if (container.nodeType !== 3 && container.contains && container.contains(cur)) return acc
+    acc += cur.textContent.length
+  }
+  return acc
+}
 
 // Smoothly tween a container's scrollTop. We animate scrollTop ourselves rather
 // than rely on scrollIntoView({behavior:'smooth'}), which some embedded browsers
@@ -60,6 +109,7 @@ function renderParagraph(
   searchRanges = [],
   activeMatchIndex = -1,
   activeMatchRef = null,
+  stampHighlights = [],
 ) {
   const clamp = (n) => Math.max(0, Math.min(n ?? 0, text.length))
 
@@ -85,6 +135,10 @@ function renderParagraph(
     points.add(clamp(s.start))
     points.add(clamp(s.end))
   }
+  for (const h of stampHighlights) {
+    points.add(clamp(h.start))
+    points.add(clamp(h.end))
+  }
   const sorted = [...points].sort((a, b) => a - b)
 
   const out = []
@@ -94,14 +148,19 @@ function renderParagraph(
     const p = sorted[i]
     if (byOffset.has(p)) {
       for (const ann of byOffset.get(p)) {
-        out.push(<AnnotationMarker key={ann.id} ann={ann} onClick={onOpenAnnotation} />)
+        // Wrapped in data-skip so selection→offset mapping ignores the chip.
+        out.push(
+          <span key={'m' + ann.id} data-skip="">
+            <AnnotationMarker ann={ann} onClick={onOpenAnnotation} />
+          </span>,
+        )
       }
     }
     const next = sorted[i + 1]
     if (next === undefined || next === p) continue
     const slice = text.slice(p, next)
 
-    // The actively-spoken word wins over a search highlight on the same span.
+    // The actively-spoken word wins over any highlight on the same span.
     if (hasWord && p >= wStart && next <= wEnd) {
       out.push(
         <mark
@@ -135,6 +194,26 @@ function renderParagraph(
       continue
     }
 
+    // A stamp applied to a selected passage: highlight it in the stamp's color.
+    const hl = stampHighlights.find((h) => p >= clamp(h.start) && next <= clamp(h.end))
+    if (hl) {
+      out.push(
+        <mark
+          key={'h' + p}
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenAnnotation?.(hl.ann)
+          }}
+          className="cursor-pointer rounded text-slate-900"
+          style={{ backgroundColor: hexToRgba(hl.hex, 0.32) }}
+          title={hl.label}
+        >
+          {slice}
+        </mark>,
+      )
+      continue
+    }
+
     out.push(<span key={'t' + p}>{slice}</span>)
   }
   return out
@@ -154,6 +233,7 @@ export default function TextPane({
   annotations,
   onSelectParagraph,
   onOpenAnnotation,
+  selectionApi,
 }) {
   const paraRefs = useRef({})
   const wordElRef = useRef(null)
@@ -181,6 +261,31 @@ export default function TextPane({
     }
     return map
   }, [annotations])
+
+  // Read the current text selection as a paragraph range, for stamping a passage.
+  // Pulled on demand by the parent (at stamp-click time) via `selectionApi`.
+  const computeSelection = () => {
+    const selection = typeof window !== 'undefined' ? window.getSelection() : null
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
+    const rng = selection.getRangeAt(0)
+    const startPt = ptextElOf(rng.startContainer)
+    if (!startPt || startPt !== ptextElOf(rng.endContainer)) return null // single paragraph only
+    const pEl = startPt.closest('[data-pidx]')
+    if (!pEl) return null
+    const paragraphIndex = Number(pEl.getAttribute('data-pidx'))
+    const full = paragraphs[paragraphIndex]?.text || ''
+    const a = offsetInPtext(startPt, rng.startContainer, rng.startOffset)
+    const b = offsetInPtext(startPt, rng.endContainer, rng.endOffset)
+    const charStart = Math.max(0, Math.min(Math.min(a, b), full.length))
+    const charEnd = Math.max(0, Math.min(Math.max(a, b), full.length))
+    if (charEnd - charStart < 1) return null
+    const quote = full.slice(charStart, charEnd)
+    if (!quote.trim()) return null
+    return { paragraphIndex, charStart, charEnd, quote }
+  }
+  useEffect(() => {
+    if (selectionApi) selectionApi.current = computeSelection
+  })
 
   // Every occurrence of the query across paragraphs, in reading order.
   const matches = useMemo(() => {
@@ -407,14 +512,35 @@ export default function TextPane({
             // Precise markers have a charOffset; legacy ones render at the end.
             const inline = anns.filter((a) => typeof a.charOffset === 'number')
             const trailing = anns.filter((a) => typeof a.charOffset !== 'number')
+            // Stamps applied to a selected passage carry a range → colored highlight.
+            const stampHl = anns
+              .filter(
+                (a) =>
+                  a.kind === 'stamp' &&
+                  typeof a.charOffset === 'number' &&
+                  typeof a.charEnd === 'number' &&
+                  a.charEnd > a.charOffset,
+              )
+              .map((a) => ({
+                start: a.charOffset,
+                end: a.charEnd,
+                hex: stampOf(a.stampId)?.hex || '#64748b',
+                label: stampOf(a.stampId)?.label || '',
+                ann: a,
+              }))
             const active = i === currentIndex
             const range = active && wordRange && wordRange.index === i ? wordRange : null
             const searchRanges = searchOpen ? searchByParagraph.get(i) || [] : []
             return (
               <p
                 key={i}
+                data-pidx={i}
                 ref={(el) => (paraRefs.current[i] = el)}
-                onClick={() => onSelectParagraph(i)}
+                onClick={() => {
+                  // Don't jump the reader when the click ends a text selection.
+                  const s = window.getSelection()
+                  if (!s || s.isCollapsed) onSelectParagraph(i)
+                }}
                 className={
                   'group cursor-pointer rounded-lg px-3 py-2 transition ' +
                   (active
@@ -428,18 +554,23 @@ export default function TextPane({
                 >
                   {i + 1}
                 </span>
-                {renderParagraph(
-                  p.text,
-                  range,
-                  inline,
-                  wordElRef,
-                  onOpenAnnotation,
-                  searchRanges,
-                  activeMatchGlobalIndex,
-                  activeMatchElRef,
-                )}
+                <span data-ptext="">
+                  {renderParagraph(
+                    p.text,
+                    range,
+                    inline,
+                    wordElRef,
+                    onOpenAnnotation,
+                    searchRanges,
+                    activeMatchGlobalIndex,
+                    activeMatchElRef,
+                    stampHl,
+                  )}
+                </span>
                 {trailing.map((a) => (
-                  <AnnotationMarker key={a.id} ann={a} onClick={onOpenAnnotation} />
+                  <span key={a.id} data-skip="">
+                    <AnnotationMarker ann={a} onClick={onOpenAnnotation} />
+                  </span>
                 ))}
               </p>
             )

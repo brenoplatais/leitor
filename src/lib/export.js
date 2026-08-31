@@ -68,6 +68,7 @@ export function exportJSON({ pdfName, paragraphs, annotations }) {
       aiConfidence: a.aiConfidence || null,
       paragraphIndex: a.paragraphIndex,
       charOffset: a.charOffset ?? null,
+      charEnd: a.charEnd ?? null,
       contextSnippet: a.contextSnippet || '',
       page: paragraphs[a.paragraphIndex]?.page ?? null,
       transcription: a.transcription,
