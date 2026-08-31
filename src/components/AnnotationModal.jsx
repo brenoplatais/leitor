@@ -109,7 +109,7 @@ export default function AnnotationModal({
               Anotação refinada
             </span>
             <span className="text-xs font-medium text-emerald-700">
-              Score {refinement.score ?? 0}/{CONTROL_TOTAL}
+              {refinement.score ?? 0}/{CONTROL_TOTAL} controles
             </span>
           </div>
         )}

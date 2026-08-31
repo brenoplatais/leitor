@@ -371,6 +371,7 @@ export default function App() {
         kind: 'stamp',
         stampId: s.stampId,
         auto: true,
+        aiConfidence: s.confidence || null, // high|medium|low from AI; null for heuristic
         paragraphIndex: s.paragraphIndex,
         charOffset: 0,
         contextSnippet: contextAround(pText, 0),

@@ -124,7 +124,7 @@ export default function AnnotationRefinementModal({ open, initial, onSave, onClo
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
           <span className="text-xs text-slate-400">
-            Score de controle:{' '}
+            Controles resolvidos:{' '}
             <span className="font-semibold text-slate-600">
               {score}/{CONTROL_TOTAL}
             </span>

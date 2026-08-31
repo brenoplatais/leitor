@@ -4,8 +4,8 @@
 // never load it. Returns the same shape as the heuristic detectStructure.
 import { STAMPS } from './stamps.js'
 
-const AI_SCORE = 90
 const MAX_SNIPPET = 600 // chars per paragraph sent to the model
+const CONFIDENCE = new Set(['high', 'medium', 'low'])
 
 function structuraStamps() {
   return STAMPS.filter((s) => s.group === 'estrutura')
@@ -34,8 +34,11 @@ export function buildStructurePrompt(paragraphs) {
     '- Cada seção normalmente aparece UMA vez (tema, objetivo, lacuna, relevância, ' +
     'contribuições); metodologia e contexto teórico podem aparecer em poucos parágrafos.\n' +
     '- Escolha o parágrafo mais representativo de cada seção.\n' +
+    '- Para cada marca, indique a confiança "high", "medium" ou "low". Se não tiver ' +
+    'confiança razoável, ABSTENHA-SE (simplesmente não inclua o parágrafo). Use "low" ' +
+    'com parcimônia — é melhor omitir do que arriscar.\n' +
     '- Responda APENAS com um array JSON, sem texto extra, no formato: ' +
-    '[{"i": <número do parágrafo>, "s": "<identificador>"}].'
+    '[{"i": <número do parágrafo>, "s": "<identificador>", "c": "high|medium|low"}].'
 
   const list = body
     .map((b) => {
@@ -48,8 +51,12 @@ export function buildStructurePrompt(paragraphs) {
   return { system, user }
 }
 
-/** Pure: parse + validate the model's JSON into detection results. */
-export function parseAiStructure(text, validStampIds, validIndexSet) {
+/**
+ * Pure: parse + validate the model's JSON into detection results, each with a
+ * `confidence` of 'high' | 'medium' | 'low'. Low-confidence marks are dropped by
+ * default (pass `includeLow: true` to keep them).
+ */
+export function parseAiStructure(text, validStampIds, validIndexSet, { includeLow = false } = {}) {
   let raw = text
   const match = text.match(/\[[\s\S]*\]/)
   if (match) raw = match[0]
@@ -70,8 +77,10 @@ export function parseAiStructure(text, validStampIds, validIndexSet) {
     if (!Number.isInteger(idx) || seen.has(idx)) continue
     if (!validIndexSet.has(idx)) continue
     if (!validStampIds.has(stampId)) continue
+    const confidence = CONFIDENCE.has(item.c) ? item.c : 'medium'
+    if (confidence === 'low' && !includeLow) continue // abstain-by-default on low
     seen.add(idx)
-    out.push({ paragraphIndex: idx, stampId, score: AI_SCORE })
+    out.push({ paragraphIndex: idx, stampId, confidence })
   }
   return out.sort((a, b) => a.paragraphIndex - b.paragraphIndex)
 }

@@ -169,19 +169,25 @@ export const PROTOCOL_STEPS = [
   },
 ]
 
-/** 8 control questions. Answers are 'sim' | 'não' | 'incerto'. */
+/**
+ * 8 control questions. Answers are 'sim' | 'não' | 'incerto'. Each is phrased as
+ * an unambiguous proposition where **"sim" is always the healthy answer** — so
+ * counting "sim" measures resolved controls, and "não"/"incerto" are pending
+ * alerts. (An earlier version summed "sim" over questions whose healthy answer
+ * was actually "não", which made the number meaningless.)
+ */
 export const CONTROL_QUESTIONS = [
   {
     id: 'q1',
-    text: 'Estou criticando o que o autor afirmou ou algo que eu gostaria que tivesse discutido?',
+    text: 'Minha crítica se dirige a algo efetivamente afirmado pelo autor (e não a algo que eu gostaria que ele tivesse discutido)?',
     feedbackNo:
-      "Sua crítica pode estar apontando uma ausência, não uma contradição. Revise Etapa 5: talvez seja 'mostra dimensão ausente' em vez de 'derruba'.",
+      "Se ataca uma ausência, não uma contradição, revise a Etapa 5: talvez seja 'mostra dimensão ausente' em vez de 'derruba'.",
     feedbackUncertain:
       'Releia sua crítica. A diferença entre refutar e ampliar é crucial para uma crítica justa.',
   },
   {
     id: 'q2',
-    text: 'Reconstruí a versão mais forte do argumento (Etapa 1)?',
+    text: 'Reconstruí a versão mais forte do argumento antes de criticá-lo (Etapa 1)?',
     feedbackNo:
       'Se não consegue reconstruir de forma que o autor aceitasse, sua crítica ainda está vulnerável. Retorne à Etapa 1.',
     feedbackUncertain:
@@ -189,55 +195,55 @@ export const CONTROL_QUESTIONS = [
   },
   {
     id: 'q3',
-    text: 'Minha objeção é interna ao quadro teórico ou vem de outro paradigma?',
+    text: 'Identifiquei se minha objeção é interna ao quadro do autor ou vem de outro paradigma?',
     feedbackNo:
-      "Se vem de outro paradigma, você pode estar comparando maçã com laranja. Tipo 'Crítica Paradigmática' seria mais apropriado?",
+      "Identifique isso: se vem de outro paradigma, pode estar comparando maçã com laranja — 'Crítica Paradigmática' seria mais apropriado?",
     feedbackUncertain:
-      'Identifique: está testando a lógica interna do autor ou propondo um quadro alternativo?',
+      'Decida: está testando a lógica interna do autor ou propondo um quadro alternativo?',
   },
   {
     id: 'q4',
-    text: 'Um contraexemplo realmente refuta a afirmação ou apenas limita sua universalidade?',
+    text: 'Se usei um contraexemplo, delimitei se ele refuta a tese ou apenas restringe seu alcance?',
     feedbackNo:
-      "Contraexemplos geralmente restringem, não refutam. Revise Etapa 5: 'restringe' em vez de 'derruba'?",
+      "Contraexemplos geralmente restringem, não refutam. Revise a Etapa 5: 'restringe' em vez de 'derruba'?",
     feedbackUncertain:
       "Teste: se o autor dissesse 'minha tese é válida para este escopo específico', seu contraexemplo desapareceria?",
   },
   {
     id: 'q5',
-    text: 'Estou confundindo ausência de uma dimensão com falsidade do argumento?',
+    text: 'Distingui claramente a ausência de uma dimensão da falsidade do argumento?',
     feedbackNo:
-      'Reavalie. O autor não discutir algo ≠ o autor estar errado sobre o que disse. São críticas diferentes.',
+      'O autor não discutir algo ≠ o autor estar errado sobre o que disse. São críticas diferentes.',
     feedbackUncertain:
       'Etapa 6: sua alternativa adiciona uma perspectiva ou refuta a anterior?',
   },
   {
     id: 'q6',
-    text: "'Complexidade' está nomeando relações concretas ou funcionando como palavra de autoridade?",
+    text: "Evitei usar 'complexidade' como palavra de autoridade, nomeando relações concretas?",
     feedbackNo:
-      "Evite 'é reducionista' sem especificar qual complexidade. Revise Etapa 3.",
+      "Evite 'é reducionista' sem especificar qual complexidade. Revise a Etapa 3.",
     feedbackUncertain:
       "Reescreva sua crítica sem usar 'complexidade'. Se desaparecer, estava funcionando como autoridade vazia.",
   },
   {
     id: 'q7',
-    text: 'Consigo dizer o que precisaria mudar para a afirmação tornar-se defensável?',
+    text: 'Consigo dizer o que precisaria mudar para a afirmação tornar-se defensável (Etapa 6)?',
     feedbackNo:
-      'Etapa 6 (Alternativa) é exatamente isso. Se não consegue, sua objeção está incompleta.',
+      'A Etapa 6 (Alternativa) é exatamente isso. Se não consegue, sua objeção está incompleta.',
     feedbackUncertain:
       "Tente completar: 'A afirmação seria defensável se [preenchimento aqui]'.",
   },
   {
     id: 'q8',
-    text: 'Algum juízo sobre o autor está ocupando o lugar da demonstração?',
+    text: 'Evitei substituir a demonstração por um juízo sobre o autor?',
     feedbackNo:
-      'Releia. Está argumentando ou apenas desaprovando? Remova adjetivos sobre o autor, mantenha a lógica.',
+      'Releia: está argumentando ou apenas desaprovando? Remova adjetivos sobre o autor, mantenha a lógica.',
     feedbackUncertain:
       'Teste: sua objeção permaneceria válida se o autor fosse alguém que você admira?',
   },
 ]
 
-/** Total number of control questions — the denominator of the score. */
+/** Total number of control questions. */
 export const CONTROL_TOTAL = CONTROL_QUESTIONS.length
 
 export function critiqueTypeOf(id) {
@@ -277,8 +283,10 @@ export function emptyRefinement() {
 }
 
 /**
- * Score = number of control questions answered 'sim' (the answer that reflects
- * sound critique hygiene). Ranges 0..CONTROL_TOTAL.
+ * Resolved controls = questions answered 'sim'. Now that every question is
+ * phrased so 'sim' is the healthy answer, this count is meaningful (it was not
+ * before). Ranges 0..CONTROL_TOTAL. Kept as `computeScore` for compatibility
+ * with the stored `refinement.score` field.
  */
 export function computeScore(controlQuestions) {
   if (!controlQuestions) return 0
@@ -286,6 +294,25 @@ export function computeScore(controlQuestions) {
     (sum, q) => sum + (controlQuestions[q.id] === 'sim' ? 1 : 0),
     0,
   )
+}
+
+/**
+ * Controls summary: `resolved` = 'sim'; `pending` = 'não'/'incerto' (alerts to
+ * address); `answered` = any non-empty answer.
+ */
+export function computeControls(controlQuestions) {
+  const cq = controlQuestions || {}
+  let resolved = 0
+  let pending = 0
+  let answered = 0
+  for (const q of CONTROL_QUESTIONS) {
+    const a = cq[q.id]
+    if (!a) continue
+    answered += 1
+    if (a === 'sim') resolved += 1
+    else pending += 1
+  }
+  return { resolved, pending, answered }
 }
 
 /** Whether a required protocol step is satisfied for the given protocol draft. */

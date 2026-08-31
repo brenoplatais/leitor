@@ -18,27 +18,41 @@ test('buildStructurePrompt lists body paragraphs by global index, skips markers'
   assert.doesNotMatch(user, /Página/)
 })
 
-test('parseAiStructure validates ids and indices, dedupes, tolerates surrounding text', () => {
+test('parseAiStructure carries confidence, validates, dedupes, tolerates surrounding text', () => {
   const validStamps = new Set(['objetivo', 'metodologia'])
   const validIdx = new Set([1, 3, 5])
 
   const good = parseAiStructure(
-    'Aqui está: [{"i":1,"s":"objetivo"},{"i":3,"s":"metodologia"}] pronto.',
+    'Aqui está: [{"i":1,"s":"objetivo","c":"high"},{"i":3,"s":"metodologia","c":"medium"}] pronto.',
     validStamps,
     validIdx,
   )
   assert.deepEqual(good, [
-    { paragraphIndex: 1, stampId: 'objetivo', score: 90 },
-    { paragraphIndex: 3, stampId: 'metodologia', score: 90 },
+    { paragraphIndex: 1, stampId: 'objetivo', confidence: 'high' },
+    { paragraphIndex: 3, stampId: 'metodologia', confidence: 'medium' },
   ])
+
+  // Missing/invalid confidence defaults to 'medium'.
+  const dflt = parseAiStructure('[{"i":5,"s":"objetivo"}]', validStamps, validIdx)
+  assert.deepEqual(dflt, [{ paragraphIndex: 5, stampId: 'objetivo', confidence: 'medium' }])
 
   // Unknown stamp, out-of-range index, and a duplicate are all dropped.
   const filtered = parseAiStructure(
-    '[{"i":1,"s":"objetivo"},{"i":1,"s":"metodologia"},{"i":9,"s":"objetivo"},{"i":3,"s":"inexistente"}]',
+    '[{"i":1,"s":"objetivo","c":"high"},{"i":1,"s":"metodologia"},{"i":9,"s":"objetivo"},{"i":3,"s":"inexistente"}]',
     validStamps,
     validIdx,
   )
-  assert.deepEqual(filtered, [{ paragraphIndex: 1, stampId: 'objetivo', score: 90 }])
+  assert.deepEqual(filtered, [{ paragraphIndex: 1, stampId: 'objetivo', confidence: 'high' }])
+})
+
+test('parseAiStructure drops low confidence by default, keeps it with includeLow', () => {
+  const validStamps = new Set(['objetivo'])
+  const validIdx = new Set([1])
+  const json = '[{"i":1,"s":"objetivo","c":"low"}]'
+  assert.deepEqual(parseAiStructure(json, validStamps, validIdx), [])
+  assert.deepEqual(parseAiStructure(json, validStamps, validIdx, { includeLow: true }), [
+    { paragraphIndex: 1, stampId: 'objetivo', confidence: 'low' },
+  ])
 })
 
 test('parseAiStructure returns [] on non-JSON or non-array', () => {

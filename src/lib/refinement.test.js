@@ -13,6 +13,7 @@ import {
   emptyControlQuestions,
   emptyRefinement,
   computeScore,
+  computeControls,
   isStepComplete,
   isProtocolComplete,
   hasRefinementContent,
@@ -53,6 +54,23 @@ test('computeScore counts only "sim" answers', () => {
   for (const q of CONTROL_QUESTIONS) allYes[q.id] = 'sim'
   assert.equal(computeScore(allYes), 8)
   assert.equal(computeScore(null), 0)
+})
+
+test('computeControls splits resolved (sim) from pending (não/incerto)', () => {
+  const cq = { q1: 'sim', q2: 'não', q3: 'incerto', q4: 'sim' } // q5..q8 unanswered
+  assert.deepEqual(computeControls(cq), { resolved: 2, pending: 2, answered: 4 })
+  assert.deepEqual(computeControls(emptyControlQuestions()), {
+    resolved: 0,
+    pending: 0,
+    answered: 0,
+  })
+  assert.deepEqual(computeControls(null), { resolved: 0, pending: 0, answered: 0 })
+})
+
+test('every control question reads with "sim" as the healthy answer', () => {
+  // Guards the fix: q5 and q8 used to have "não" as the healthy answer.
+  assert.match(CONTROL_QUESTIONS.find((q) => q.id === 'q5').text, /Distingui/)
+  assert.match(CONTROL_QUESTIONS.find((q) => q.id === 'q8').text, /Evitei/)
 })
 
 test('isStepComplete: textarea/select need non-empty; select+textarea needs the select', () => {

@@ -1,4 +1,4 @@
-import { CONTROL_QUESTIONS, CONTROL_TOTAL, computeScore } from '../lib/refinement'
+import { CONTROL_QUESTIONS, CONTROL_TOTAL, computeControls } from '../lib/refinement'
 
 const ANSWERS = [
   { value: 'sim', label: 'Sim' },
@@ -12,8 +12,7 @@ const ANSWERS = [
  * controlQuestions map; `onChange(questionId, answer)` patches one answer.
  */
 export default function ControlQuestionsChecklist({ value, onChange }) {
-  const score = computeScore(value)
-  const answered = CONTROL_QUESTIONS.filter((q) => value[q.id]).length
+  const { resolved, pending, answered } = computeControls(value)
 
   return (
     <div>
@@ -22,10 +21,13 @@ export default function ControlQuestionsChecklist({ value, onChange }) {
           {answered}/{CONTROL_TOTAL} respondidas
         </span>
         <span className="text-sm font-semibold text-slate-700">
-          Score{' '}
-          <span className={score >= 6 ? 'text-emerald-600' : 'text-amber-600'}>
-            {score}/{CONTROL_TOTAL}
-          </span>
+          <span className="text-emerald-600">{resolved} resolvidos</span>
+          {pending > 0 && (
+            <>
+              {' · '}
+              <span className="text-amber-600">{pending} alertas</span>
+            </>
+          )}
         </span>
       </div>
 

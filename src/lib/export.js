@@ -64,6 +64,8 @@ export function exportJSON({ pdfName, paragraphs, annotations }) {
       type: a.type || 'note',
       stampId: a.stampId || null,
       stampLabel: isStamp(a) ? stampOf(a.stampId)?.label ?? null : null,
+      auto: a.auto || false,
+      aiConfidence: a.aiConfidence || null,
       paragraphIndex: a.paragraphIndex,
       charOffset: a.charOffset ?? null,
       contextSnippet: a.contextSnippet || '',

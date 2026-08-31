@@ -81,7 +81,7 @@ export default function AnnotationsPanel({
                           className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
                           title={
                             (ct ? ct.name + ' · ' : '') +
-                            `refinada · score ${a.refinement.score ?? 0}/${CONTROL_TOTAL}`
+                            `refinada · ${a.refinement.score ?? 0}/${CONTROL_TOTAL} controles resolvidos`
                           }
                         >
                           {ct ? `${ct.icon} ` : '✓ '}
