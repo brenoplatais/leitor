@@ -9,6 +9,7 @@
 export const STAMP_GROUPS = [
   { id: 'leitura', label: 'Leitura' },
   { id: 'estrutura', label: 'Estrutura do artigo' },
+  { id: 'referencial', label: 'Referencial teórico' },
 ]
 
 export const STAMPS = [
@@ -86,6 +87,80 @@ export const STAMPS = [
     icon: '🎓',
     hex: '#1d4ed8',
     desc: 'Contribuições para o conhecimento na área do turismo/hotelaria.',
+  },
+
+  // --- Referencial teórico (análise da revisão de literatura) --------------
+  {
+    id: 'rt_conceito',
+    group: 'referencial',
+    label: 'Conceito / definição',
+    short: 'Conceito',
+    icon: '📐',
+    hex: '#4338ca',
+    desc: 'Conceito central e como é definido/organizado. A escolha faz sentido para o tema e os objetivos?',
+  },
+  {
+    id: 'rt_referencia',
+    group: 'referencial',
+    label: 'Referência-chave',
+    short: 'Referência',
+    icon: '📎',
+    hex: '#2563eb',
+    desc: 'Estudo/autor mobilizado. É nacional ou internacional? O que ele acrescenta à construção do estudo?',
+  },
+  {
+    id: 'rt_articula',
+    group: 'referencial',
+    label: 'Articula (constrói argumento)',
+    short: 'Articula',
+    icon: '🪢',
+    hex: '#059669',
+    desc: 'Relaciona diferentes trabalhos/resultados e constrói um argumento — não apenas descreve.',
+  },
+  {
+    id: 'rt_descreve',
+    group: 'referencial',
+    label: 'Só descreve',
+    short: 'Só descreve',
+    icon: '📋',
+    hex: '#6b7280',
+    desc: 'Apenas descreve o que outros pesquisadores fizeram, sem articular um argumento.',
+  },
+  {
+    id: 'rt_tensao',
+    group: 'referencial',
+    label: 'Convergência / divergência / limitação',
+    short: 'Converg./diverg.',
+    icon: '⚖️',
+    hex: '#b45309',
+    desc: 'Identifica convergências, divergências, limitações ou questões ainda não resolvidas entre trabalhos.',
+  },
+  {
+    id: 'rt_hipotese',
+    group: 'referencial',
+    label: 'Hipótese / proposição',
+    short: 'Hipótese',
+    icon: '💡',
+    hex: '#d97706',
+    desc: 'Hipótese ou proposição que decorre logicamente da revisão construída.',
+  },
+  {
+    id: 'rt_lacuna_lit',
+    group: 'referencial',
+    label: 'Lacuna (da literatura)',
+    short: 'Lacuna (lit.)',
+    icon: '🚩',
+    hex: '#be123c',
+    desc: 'A lacuna de pesquisa é construída a partir da literatura apresentada?',
+  },
+  {
+    id: 'rt_conexao_obj',
+    group: 'referencial',
+    label: 'Conexão → objetivo',
+    short: '→ objetivo',
+    icon: '🧭',
+    hex: '#0891b2',
+    desc: 'Conexão clara entre o referencial construído, o tema e os objetivos da pesquisa.',
   },
 ]
 
