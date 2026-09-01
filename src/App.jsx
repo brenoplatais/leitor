@@ -302,15 +302,33 @@ export default function App() {
   }
 
   // ---- Annotation actions ------------------------------------------------
-  // Anchor point: the exact character offset of the word being read (falls back
-  // to the paragraph start when not mid-word).
+  // Anchor: a selected passage (highlighted in the type's color) when text is
+  // selected; otherwise the word being read (or the paragraph start).
   function openAnnotate() {
     if (reader.reading && !reader.paused) reader.pause()
+    const sel = selectionApiRef.current ? selectionApiRef.current() : null
+    if (sel && sel.quote) {
+      const q = sel.quote.trim()
+      setAnnotationModal({
+        paragraphIndex: sel.paragraphIndex,
+        charOffset: sel.charStart,
+        charEnd: sel.charEnd,
+        contextSnippet: q.length > 160 ? q.slice(0, 160) + '…' : q,
+        editing: null,
+      })
+      try {
+        window.getSelection()?.removeAllRanges()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
     const pText = paragraphs[currentIndex]?.text || ''
     const charOffset = wordRange && wordRange.index === currentIndex ? wordRange.start : 0
     setAnnotationModal({
       paragraphIndex: currentIndex,
       charOffset,
+      charEnd: charOffset,
       contextSnippet: contextAround(pText, charOffset),
       editing: null,
     })
@@ -489,6 +507,7 @@ export default function App() {
           label: `A${n}`,
           paragraphIndex: annotationModal.paragraphIndex,
           charOffset: annotationModal.charOffset ?? 0,
+          charEnd: annotationModal.charEnd ?? null,
           contextSnippet: annotationModal.contextSnippet || '',
           type: type || DEFAULT_TYPE,
           transcription: text,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AnnotationMarker from './AnnotationMarker'
 import { stampOf } from '../lib/stamps'
+import { typeOf } from '../lib/annotationTypes'
 import { Chevron, Close } from './Icons'
 
 /** Translucent version of a stamp's hex color, for highlighting a passage. */
@@ -512,22 +513,26 @@ export default function TextPane({
             // Precise markers have a charOffset; legacy ones render at the end.
             const inline = anns.filter((a) => typeof a.charOffset === 'number')
             const trailing = anns.filter((a) => typeof a.charOffset !== 'number')
-            // Stamps applied to a selected passage carry a range → colored highlight.
+            // Any annotation applied to a selected passage carries a range →
+            // highlight it in its color (stamp color, or the note's type color).
             const stampHl = anns
               .filter(
                 (a) =>
-                  a.kind === 'stamp' &&
                   typeof a.charOffset === 'number' &&
                   typeof a.charEnd === 'number' &&
                   a.charEnd > a.charOffset,
               )
-              .map((a) => ({
-                start: a.charOffset,
-                end: a.charEnd,
-                hex: stampOf(a.stampId)?.hex || '#64748b',
-                label: stampOf(a.stampId)?.label || '',
-                ann: a,
-              }))
+              .map((a) => {
+                const s = a.kind === 'stamp' ? stampOf(a.stampId) : null
+                const t = typeOf(a.type)
+                return {
+                  start: a.charOffset,
+                  end: a.charEnd,
+                  hex: s ? s.hex : t.hex,
+                  label: s ? s.label : t.label,
+                  ann: a,
+                }
+              })
             const active = i === currentIndex
             const range = active && wordRange && wordRange.index === i ? wordRange : null
             const searchRanges = searchOpen ? searchByParagraph.get(i) || [] : []
