@@ -1,7 +1,7 @@
 // Export a document + its annotations (voice notes and stamps) to structured
 // JSON or compiled Markdown.
-import { typeOf } from './annotationTypes'
-import { stampOf } from './stamps'
+import { typeOf } from './annotationTypes.js'
+import { stampOf } from './stamps.js'
 
 function triggerDownload(content, filename, mime) {
   const blob = new Blob([content], { type: mime })
@@ -42,6 +42,42 @@ function snippetOf(a, paragraphs) {
   if (a.contextSnippet) return a.contextSnippet
   const c = paragraphs[a.paragraphIndex]?.text || ''
   return c.length > 220 ? c.slice(0, 220) + '…' : c
+}
+
+/**
+ * Pure: the clean article text as Markdown — no annotations, no page markers.
+ * Headers/footers are already gone (stripped during extraction); page markers
+ * are a reader/TTS concern and stay out of the document. Paragraphs that carry
+ * an applied "estrutura" stamp (tema, objetivo, metodologia…) open a `##`
+ * section heading, so the output is structured and AI-ready.
+ */
+export function buildCleanMarkdown({ pdfName, paragraphs, annotations = [] }) {
+  const headingByPara = new Map()
+  for (const a of annotations) {
+    if (a.kind !== 'stamp') continue
+    const s = stampOf(a.stampId)
+    if (!s || s.group !== 'estrutura') continue
+    if (!headingByPara.has(a.paragraphIndex)) headingByPara.set(a.paragraphIndex, s.label)
+  }
+
+  const lines = [`# ${baseName(pdfName)}`, '']
+  paragraphs.forEach((p, i) => {
+    if (p.pageMarker) return // pages are for the reader, not the clean document
+    if (headingByPara.has(i)) {
+      lines.push(`## ${headingByPara.get(i)}`, '')
+    }
+    lines.push(p.text, '')
+  })
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n'
+}
+
+export function exportCleanText({ pdfName, paragraphs, annotations }) {
+  triggerDownload(
+    buildCleanMarkdown({ pdfName, paragraphs, annotations }),
+    `${baseName(pdfName)}.texto.md`,
+    'text/markdown',
+  )
 }
 
 export function exportJSON({ pdfName, paragraphs, annotations }) {

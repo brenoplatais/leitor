@@ -16,6 +16,7 @@ export default function AnnotationsPanel({
   onDelete,
   onExportJSON,
   onExportMarkdown,
+  onExportText,
 }) {
   return (
     <aside className="flex h-full w-full flex-col border-l border-slate-200 bg-slate-50">
@@ -25,6 +26,14 @@ export default function AnnotationsPanel({
           <p className="text-xs text-slate-400">{annotations.length} no total</p>
         </div>
         <div className="flex gap-1">
+          <button
+            onClick={onExportText}
+            disabled={paragraphs.length === 0}
+            title="Exportar só o texto do artigo, limpo em Markdown (sem cabeçalho/rodapé nem anotações)"
+            className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+          >
+            <Download width={14} height={14} /> Texto
+          </button>
           <button
             onClick={onExportMarkdown}
             disabled={paragraphs.length === 0}

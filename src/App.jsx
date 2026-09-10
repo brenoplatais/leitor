@@ -21,7 +21,7 @@ import {
   patchDocument,
   getDocument,
 } from './lib/db'
-import { exportJSON, exportMarkdown } from './lib/export'
+import { exportJSON, exportMarkdown, exportCleanText } from './lib/export'
 import { contextAround, DEFAULT_TYPE } from './lib/annotationTypes'
 
 const LANGUAGES = [
@@ -752,6 +752,9 @@ export default function App() {
               onJump={selectParagraph}
               onEdit={editAnnotation}
               onDelete={deleteAnnotation}
+              onExportText={() =>
+                exportCleanText({ pdfName: doc.pdfName, paragraphs, annotations })
+              }
               onExportJSON={() => exportJSON({ pdfName: doc.pdfName, paragraphs, annotations })}
               onExportMarkdown={() =>
                 exportMarkdown({ pdfName: doc.pdfName, paragraphs, annotations })
